@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>NHR Portal - Register</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}"/>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .btn-primary { transition: all 0.2s ease; }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(135, 0, 9, 0.35);
+            filter: brightness(1.08);
+        }
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0px) scale(0.98);
+            box-shadow: 0 2px 8px rgba(135, 0, 9, 0.2);
+        }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-secondary { transition: all 0.2s ease; }
+        .btn-secondary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            border-color: #870009 !important;
+            color: #870009;
+        }
+        .btn-secondary:active:not(:disabled) { transform: translateY(0px) scale(0.98); }
+        .btn-secondary:disabled { opacity: 0.7; cursor: not-allowed; }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
+    </style>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyREDACTED_FIREBASE_WEB_API_KEY",
+            authDomain: "premium-arc-490609-m4.firebaseapp.com",
+            projectId: "premium-arc-490609-m4",
+            storageBucket: "premium-arc-490609-m4.firebasestorage.app",
+            messagingSenderId: "000000000000",
+            appId: "1:000000000000:web:0b908e825a174e5ba6812d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        function btnLoading(btn) {
+            btn.disabled = true;
+            btn.dataset.originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat spinning text-[22px]"></i>';
+        }
+        function btnReset(btn) {
+            btn.disabled = false;
+            if (btn.dataset.originalHtml) {
+                btn.innerHTML = btn.dataset.originalHtml;
+                delete btn.dataset.originalHtml;
+            }
+        }
+
+        // ✅ Step 1: 사번 검증
+        window.verifyEmpId = async function() {
+            const empId = document.getElementById('emp-id-input').value.trim();
+            const passport = document.getElementById('passport-input').value.trim();
+            if (!empId) { showError('Please enter your Employee ID.'); return; }
+            if (!passport) { showError('Please enter your Passport Number.'); return; }
+
+            const btn = document.getElementById('btn-verify');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/verify-emp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ empId, passport })
+            });
+            const data = await response.json();
+            btnReset(btn);
+
+            if (data.status === 'OK') {
+                document.getElementById('verified-name').textContent = data.name;
+                document.getElementById('verified-empid').textContent = empId;
+                showStep('step-method');
+            } else {
+                showError(data.message || 'Verification failed.');
+            }
+        }
+
+        // ✅ Step 2-A: Google 계정으로 가입
+        window.registerWithGoogle = async function() {
+            const btn = document.getElementById('btn-google');
+            btnLoading(btn);
+            try {
+                const provider = new GoogleAuthProvider();
+                provider.setCustomParameters({ prompt: 'select_account' });
+                const result = await signInWithPopup(auth, provider);
+                await completeRegistration(result.user);
+            } catch (e) {
+                showError('Google sign-in failed. Please try again.');
+                console.error(e);
+                btnReset(btn);
+            }
+        }
+
+        // ✅ Step 2-B: 이메일/비밀번호로 가입
+        window.registerWithEmail = async function() {
+            const email = document.getElementById('reg-email').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const confirm = document.getElementById('reg-confirm').value;
+
+            if (!email || !password || !confirm) { showError('Please fill in all fields.'); return; }
+            if (password !== confirm) { showError('Passwords do not match.'); return; }
+            if (password.length < 8) { showError('Password must be at least 8 characters.'); return; }
+
+            const btn = document.getElementById('btn-register');
+            btnLoading(btn);
+            try {
+                const result = await createUserWithEmailAndPassword(auth, email, password);
+                await completeRegistration(result.user);
+            } catch (e) {
+                if (e.code === 'auth/email-already-in-use') {
+                    showError('This email is already in use.');
+                } else if (e.code === 'auth/invalid-email') {
+                    showError('Invalid email address.');
+                } else {
+                    showError('Registration failed. Please try again.');
+                }
+                console.error(e);
+                btnReset(btn);
+            }
+        }
+
+        // ✅ 서버에 회원가입 완료 요청 → OTP 발송 후 팝업
+        let pendingUser = null;
+
+        async function completeRegistration(user) {
+            pendingUser = user;
+            const idToken = await user.getIdToken();
+            const empId = document.getElementById('verified-empid').textContent;
+
+            const passport = document.getElementById('passport-input').value.trim();
+            const response = await fetch('/api/auth/register-send-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken, empId, passport })
+            });
+            const data = await response.json();
+
+            if (data.status === 'OTP_REQUIRED') {
+                document.getElementById('otp-input').value = '';
+                document.getElementById('otp-error').classList.add('hidden');
+                document.getElementById('otp-modal').classList.remove('hidden');
+                setTimeout(() => document.getElementById('otp-input').focus(), 100);
+            } else {
+                showError(data.message || 'Registration failed.');
+            }
+        }
+
+        window.closeOtpModal = function() {
+            document.getElementById('otp-modal').classList.add('hidden');
+        }
+
+        let isSubmitting = false;
+        window.submitRegisterOtp = async function() {
+            if (isSubmitting) return;
+            isSubmitting = true;
+            const otp = document.getElementById('otp-input').value.trim();
+            if (!otp) {
+                isSubmitting = false;
+                document.getElementById('otp-error-text').textContent = 'Please enter the OTP.';
+                document.getElementById('otp-error').classList.remove('hidden');
+                return;
+            }
+
+            const btn = document.getElementById('btn-otp');
+            btnLoading(btn);
+
+            const idToken = await pendingUser.getIdToken();
+            const empId = document.getElementById('verified-empid').textContent;
+
+            const response = await fetch('/api/auth/register-verify-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp, idToken, empId })
+            });
+            const data = await response.json();
+
+            if (data.status === 'OK') {
+                window.location.href = data.redirect;
+            } else {
+                document.getElementById('otp-error-text').textContent = data.message || 'Invalid OTP.';
+                document.getElementById('otp-error').classList.remove('hidden');
+                btnReset(btn);
+                isSubmitting = false;
+            }
+        }
+
+        function showStep(stepId) {
+            ['step-empid', 'step-method', 'step-email-form'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(stepId).classList.remove('hidden');
+            clearError();
+        }
+
+        window.showEmailForm = function() { showStep('step-email-form'); }
+        window.backToMethod = function() { showStep('step-method'); }
+
+        function showError(msg) {
+            const el = document.getElementById('error-message');
+            const textEl = document.getElementById('error-text');
+            if (el && textEl) {
+                textEl.textContent = msg;
+                el.classList.remove('hidden');
+            }
+        }
+
+        function clearError() {
+            document.getElementById('error-message').classList.add('hidden');
+        }
+    </script>
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface": "#f7f9fb", "on-surface": "#191c1e", "primary": "#870009",
+                        "on-primary": "#ffffff", "primary-container": "#b01116",
+                        "surface-container-lowest": "#ffffff", "surface-container-low": "#f2f4f6",
+                        "surface-container": "#eceef0", "on-surface-variant": "#5b403d",
+                        "outline": "#906f6c", "outline-variant": "#e4beb9", "error": "#ba1a1a"
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col relative">
+
+    <a href="/login" class="absolute top-5 left-5 sm:top-8 sm:left-8 flex items-center gap-2 text-on-surface-variant/70 hover:text-primary transition-all p-2 rounded-xl hover:bg-surface-container-low group z-50 focus:outline-none">
+        <i class="bi bi-arrow-left text-[28px] group-hover:-translate-x-1 transition-transform"></i>
+        <span class="text-sm font-bold tracking-tight hidden sm:block mt-0.5">Back to Login</span>
+    </a>
+
+    <main class="flex-grow flex items-center justify-center px-4 py-6">
+        <div class="w-full max-w-md">
+            <div class="bg-surface-container-lowest rounded-xl relative overflow-hidden p-6 sm:p-8 border-2 border-outline/30 shadow-[0_35px_80px_rgba(25,28,30,0.12)]">
+                <div class="absolute top-0 left-0 w-full h-[3px] bg-primary"></div>
+
+                <div class="flex flex-col items-center mb-6">
+                    <div class="flex items-center justify-center mb-2 w-40 overflow-hidden">
+                        <img src="https://lh3.googleusercontent.com/d/1tZlt5Hqgz9bTgp1odWAYW7rscMOI5TLp" alt="DYB Logo" class="w-full h-auto object-contain">
+                    </div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-on-surface mb-1">REGISTER</h1>
+                </div>
+
+                <!-- 에러 메시지 -->
+                <div id="error-message" class="hidden mb-4 text-center">
+                    <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5 animate-pulse">
+                        <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                        <span id="error-text"></span>
+                    </p>
+                </div>
+
+                <!-- Step 1: 사번 입력 -->
+                <div id="step-empid">
+                    <p class="text-sm text-center text-gray-500 mb-5">Enter your Employee ID to get started.</p>
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1">Employee ID</label>
+                        <div class="relative group">
+                            <i class="bi bi-person-vcard absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                            <input id="emp-id-input" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="Enter your Employee ID" type="text" onkeydown="if(event.key==='Enter') verifyEmpId()"/>
+                        </div>
+                    </div>
+                    <div class="space-y-2 mt-4">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1">Passport Number</label>
+                        <div class="relative group">
+                            <i class="bi bi-compass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                            <input id="passport-input" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="Enter your Passport Number" type="text" onkeydown="if(event.key==='Enter') verifyEmpId()"/>
+                        </div>
+                    </div>
+                    <button id="btn-verify" onclick="verifyEmpId()" class="btn-primary w-full h-[52px] mt-5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md">
+                        <span class="text-base tracking-tight">Verify</span>
+                    </button>
+                </div>
+
+                <!-- Step 2: 로그인 방식 선택 -->
+                <div id="step-method" class="hidden">
+                    <div class="text-center mb-5">
+                        <p class="text-sm text-gray-500">Welcome,</p>
+                        <p class="text-lg font-extrabold text-on-surface" id="verified-name"></p>
+                        <p class="text-xs text-gray-400 mt-1">ID: <span id="verified-empid" class="font-mono"></span></p>
+                    </div>
+                    <p class="text-sm text-center text-gray-500 mb-4">Choose how you'd like to register.</p>
+                    <div class="flex flex-col gap-3">
+                        <button id="btn-google" onclick="registerWithGoogle()" class="btn-secondary w-full h-[52px] bg-surface-container-lowest border-2 border-gray-300 rounded-lg flex items-center justify-center gap-2 group" type="button">
+                            <img alt="Google Logo" class="w-5 h-5 group-hover:scale-110 transition-transform" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"/>
+                            <span class="text-sm font-semibold text-on-surface">Continue with Google</span>
+                        </button>
+                        <button onclick="showEmailForm()" class="btn-secondary w-full h-[52px] bg-surface-container-lowest border-2 border-gray-300 rounded-lg flex items-center justify-center gap-2 group" type="button">
+                            <i class="bi bi-envelope-fill text-gray-500 group-hover:text-primary transition-colors"></i>
+                            <span class="text-sm font-semibold text-on-surface">Continue with Email</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 3: 이메일/비밀번호 입력 -->
+                <div id="step-email-form" class="hidden">
+                    <button onclick="backToMethod()" class="flex items-center gap-1 text-xs text-gray-400 hover:text-primary transition-colors mb-4" type="button">
+                        <i class="bi bi-arrow-left text-[16px]"></i> Back
+                    </button>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Email</label>
+                            <div class="relative group">
+                                <i class="bi bi-envelope-fill absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                                <input id="reg-email" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="Enter your email" type="email" onkeydown="if(event.key==='Enter') registerWithEmail()"/>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Password</label>
+                            <div class="relative group">
+                                <i class="bi bi-key-fill absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                                <input id="reg-password" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="Min. 8 characters" type="password" onkeydown="if(event.key==='Enter') registerWithEmail()"/>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Confirm Password</label>
+                            <div class="relative group">
+                                <i class="bi bi-key-fill absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                                <input id="reg-confirm" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="Re-enter password" type="password" onkeydown="if(event.key==='Enter') registerWithEmail()"/>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="btn-register" onclick="registerWithEmail()" class="btn-primary w-full h-[52px] mt-5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                        <span class="text-base tracking-tight">Register</span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- OTP 팝업 모달 -->
+    <div id="otp-modal" class="dyb-modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-outline/20 relative">
+            <div class="absolute top-0 left-0 w-full h-[3px] bg-primary rounded-t-xl"></div>
+            <div class="flex flex-col items-center mb-5">
+                <i class="bi bi-envelope-check-fill text-primary text-[48px] mb-2"></i>
+                <h2 class="text-lg font-extrabold text-on-surface">Check your email</h2>
+                <p class="text-sm text-center text-gray-500 mt-1">We sent a 6-digit verification code.<br><span class="text-xs text-gray-400">Valid for 5 minutes.</span></p>
+            </div>
+            <div id="otp-error" class="hidden mb-4 text-center">
+                <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                    <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                    <span id="otp-error-text"></span>
+                </p>
+            </div>
+            <div class="relative group">
+                <i class="bi bi-pin-angle-fill absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                <input id="otp-input" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" type="text" maxlength="6" onkeydown="if(event.key==='Enter') submitRegisterOtp()"/>
+            </div>
+            <button id="btn-otp" onclick="submitRegisterOtp()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                <span class="text-base tracking-tight">Verify & Complete</span>
+            </button>
+            <button onclick="closeOtpModal()" class="w-full mt-2 text-sm text-gray-400 hover:text-gray-600 transition-colors" type="button">Cancel</button>
+        </div>
+    </div>
+
+</body>
+</html>

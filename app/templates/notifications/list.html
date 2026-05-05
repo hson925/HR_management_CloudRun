@@ -1,0 +1,210 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | Notifications{% endblock %}
+
+{% block extra_head %}
+<style>
+  .notif-card {
+    transition: background .15s, box-shadow .15s, transform .15s;
+    cursor: pointer;
+  }
+  .notif-card:hover {
+    background: rgba(176,17,22,.04) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,.08);
+    transform: translateY(-1px);
+  }
+  .notif-card.unread { border-left: 3px solid var(--primary); }
+  .notif-card.read   { border-left: 3px solid transparent; opacity: .7; }
+  .notif-type-icon {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .notif-loader {
+    display: none; text-align: center; padding: 24px;
+  }
+  .notif-loader.active { display: block; }
+  /* 다크 모드 hover 색 — 라이트는 rgba(176,17,22,.04) 그대로 OK, 다크는 좀 더 진하게 */
+  html[data-theme="dark"] .notif-card:hover { background: rgba(176,17,22,.10) !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:800px;margin:0 auto" class="animate-fade-in pb-8">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-extrabold" style="color:var(--on-surface)">Notifications</h1>
+      <p class="text-sm mt-1" style="color:var(--outline)">All your notifications in one place</p>
+    </div>
+    <button id="markAllBtn" onclick="markAllRead()" class="px-4 py-2 rounded-lg text-sm font-bold transition-all"
+      style="background:var(--surface-low);color:var(--on-surface-variant);border:2px solid var(--outline-variant)"
+      onmouseenter="this.style.borderColor='var(--primary)';this.style.color='var(--primary)'"
+      onmouseleave="this.style.borderColor='var(--outline-variant)';this.style.color='var(--on-surface-variant)'">
+      <i class="bi bi-check2-all mr-1"></i> Mark All Read
+    </button>
+  </div>
+
+  <!-- Notification list -->
+  <div id="notif-list"></div>
+
+  <!-- Loading indicator -->
+  <div id="notif-loader" class="notif-loader">
+    <div style="display:inline-block;width:28px;height:28px;border:3px solid var(--outline-variant);border-top-color:var(--primary);border-radius:50%;animation:spin 0.7s linear infinite"></div>
+    <p class="text-sm mt-2" style="color:var(--outline)">Loading...</p>
+  </div>
+
+  <!-- Empty state -->
+  <div id="notif-empty" style="display:none;text-align:center;padding:60px 20px">
+    <i class="bi bi-bell-slash" style="font-size:48px;color:var(--outline-variant)"></i>
+    <p class="text-lg font-bold mt-4" style="color:var(--on-surface-variant)">No notifications yet</p>
+    <p class="text-sm mt-1" style="color:var(--outline)">You'll be notified about important updates here.</p>
+  </div>
+
+  <!-- End of list -->
+  <div id="notif-end" style="display:none;text-align:center;padding:24px">
+    <p class="text-sm font-medium" style="color:var(--outline)">No more notifications</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  // 시맨틱 아이콘 — bg 는 rgba alpha 로 라이트/다크 모두 어울림
+  const TYPE_ICONS = {
+    announcement: {icon:'bi-megaphone-fill',       bg:'rgba(176,17,22,.10)',  color:'#B01116'},
+    evaluation:   {icon:'bi-clipboard-check-fill', bg:'rgba(59,130,246,.10)', color:'#1d4ed8'},
+    system:       {icon:'bi-gear-fill',            bg:'rgba(34,197,94,.10)',  color:'#16a34a'},
+    mention:      {icon:'bi-at',                   bg:'rgba(139,92,246,.10)', color:'#9333ea'},
+  };
+  let nextCursor = null;
+  let loading = false;
+  let allDone = false;
+  const listEl  = document.getElementById('notif-list');
+  const loader  = document.getElementById('notif-loader');
+  const emptyEl = document.getElementById('notif-empty');
+  const endEl   = document.getElementById('notif-end');
+
+  function timeAgo(iso){
+    if(!iso) return '';
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if(diff < 60)    return 'just now';
+    if(diff < 3600)  return Math.floor(diff/60) + 'm ago';
+    if(diff < 86400) return Math.floor(diff/3600) + 'h ago';
+    if(diff < 604800) return Math.floor(diff/86400) + 'd ago';
+    return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'});
+  }
+
+  function renderCard(n){
+    const t = TYPE_ICONS[n.type] || TYPE_ICONS.system;
+    const cls = n.read ? 'read' : 'unread';
+    const div = document.createElement('div');
+    div.className = `notif-card ${cls} rounded-xl mb-3`;
+    div.style.cssText = `padding:16px 20px;background:var(--surface-lowest);border:1px solid var(--outline-variant);border-radius:12px;display:flex;gap:14px;align-items:flex-start`;
+    div.dataset.id = n.id;
+    div.dataset.link = n.link || '';
+    div.innerHTML = `
+      <div class="notif-type-icon" style="background:${t.bg};color:${t.color}">
+        <i class="bi ${t.icon}"></i>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <p class="text-sm font-bold" style="color:var(--on-surface);line-height:1.4">${_esc(n.title||'')}</p>
+          <span class="text-xs font-medium shrink-0" style="color:var(--outline)">${timeAgo(n.created_at)}</span>
+        </div>
+        <p class="text-sm mt-1" style="color:var(--on-surface-variant);line-height:1.5">${_esc(n.message||'')}</p>
+      </div>
+      ${!n.read ? '<div style="width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:6px"></div>' : ''}
+    `;
+    div.addEventListener('click', () => clickNotif(n));
+    return div;
+  }
+
+  function _esc(s){
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  async function clickNotif(n){
+    if(!n.read){
+      try {
+        await fetch('/api/notifications/mark-read', {
+          method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ids:[n.id]}),
+        });
+        n.read = true;
+        const card = listEl.querySelector(`[data-id="${CSS.escape(n.id)}"]`);
+        if(card){
+          card.classList.remove('unread');
+          card.classList.add('read');
+          const dot = card.querySelector('[style*="border-radius:50%;background:var(--primary)"]');
+          if(dot) dot.remove();
+        }
+        if(typeof refreshNotifCount === 'function') refreshNotifCount();
+      } catch(e){}
+    }
+    if(n.link) window.location.href = n.link;
+  }
+
+  async function loadMore(){
+    if(loading || allDone) return;
+    loading = true;
+    loader.classList.add('active');
+    try {
+      let url = '/api/notifications/list?limit=30';
+      if(nextCursor) url += '&cursor=' + encodeURIComponent(nextCursor);
+      const res  = await fetch(url, {credentials:'same-origin'});
+      const data = await res.json();
+      if(data.status !== 'SUCCESS') return;
+      const items = data.notifications || [];
+      if(!items.length && !nextCursor){
+        emptyEl.style.display = 'block';
+        allDone = true;
+        return;
+      }
+      items.forEach(n => listEl.appendChild(renderCard(n)));
+      nextCursor = data.next_cursor;
+      if(!data.has_more){
+        allDone = true;
+        endEl.style.display = 'block';
+      }
+    } catch(e){
+      console.error('notif load error', e);
+    } finally {
+      loading = false;
+      loader.classList.remove('active');
+    }
+  }
+
+  // Infinite scroll
+  window.addEventListener('scroll', () => {
+    if(allDone || loading) return;
+    const scrollBottom = window.innerHeight + window.scrollY;
+    if(scrollBottom >= document.body.offsetHeight - 300) loadMore();
+  });
+
+  window.markAllRead = async function(){
+    const btn = document.getElementById('markAllBtn');
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/notifications/mark-all-read', {method:'POST', credentials:'same-origin'});
+      const data = await res.json();
+      if(data.status === 'SUCCESS'){
+        listEl.querySelectorAll('.notif-card.unread').forEach(card => {
+          card.classList.remove('unread');
+          card.classList.add('read');
+          const dot = card.querySelector('[style*="border-radius:50%;background:var(--primary)"]');
+          if(dot) dot.remove();
+        });
+        if(typeof refreshNotifCount === 'function') refreshNotifCount();
+      }
+    } catch(e){}
+    finally { btn.disabled = false; }
+  };
+
+  // Initial load
+  loadMore();
+})();
+</script>
+{% endblock %}

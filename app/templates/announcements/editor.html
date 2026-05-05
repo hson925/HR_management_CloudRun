@@ -1,0 +1,1155 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | {{ 'Edit Announcement' if post else 'New Announcement' }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/quill.snow.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dyb-datepicker.css') }}">
+<script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dyb-datepicker.js') }}"></script>
+<style>
+  :root { --primary-dark: #870009; }
+  #editor { min-height: 360px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Quill 카드 래퍼에 border/radius를 위임 — Quill 자체 border는 제거 */
+  .ql-toolbar.ql-snow { border-left: none; border-right: none; border-top: none; border-bottom: 1.5px solid var(--outline-variant); border-radius: 0; background: var(--surface-low); }
+  .ql-container.ql-snow { border: none; border-radius: 0; min-height: 320px; cursor: text; }
+  .ql-editor { min-height: 320px; }
+  /* Quill toolbar tooltips */
+  .ql-toolbar button[title], .ql-toolbar .ql-picker[title] { position: relative; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[1000px] mx-auto animate-fade-in pb-10">
+
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <div class="p-2 bg-[var(--primary)]/10 rounded-lg border border-[var(--primary)]/20">
+        <i class="bi bi-pencil-square text-lg text-[var(--primary)]"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold text-gray-900">
+          {{ 'Edit Announcement' if post else 'New Announcement' }}
+        </h1>
+        <p class="text-[11px] text-gray-500 mt-0.5">Quill Editor · Images · YouTube · Attachments max 10MB</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/announcements"
+         class="px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</a>
+      <button id="btn-save-draft"
+              class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50">
+        <i class="bi bi-file-earmark"></i> Save as Draft
+      </button>
+      <button id="btn-save"
+              class="px-4 py-2 bg-[var(--primary)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--primary-dark)] shadow-sm">
+        <i class="bi bi-send"></i> Publish
+      </button>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
+  <div class="h-1 bg-[var(--primary)]"></div>
+  <div class="p-6 sm:p-8">
+
+    <!-- Title -->
+    <div class="mb-4">
+      <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider">
+        Title <span class="text-gray-400 font-normal">제목</span>
+      </label>
+      <input type="text" id="title" maxlength="300"
+             value="{{ post.title if post else '' }}"
+             placeholder="Announcement title"
+             class="mt-1 w-full text-2xl font-bold border-0 border-b border-gray-200 focus:border-[var(--primary)] focus:outline-none py-2">
+    </div>
+
+    <!-- Allowed roles -->
+    <div class="mb-5 pt-4 border-t border-gray-200">
+      <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider">
+        Read Access <span class="text-gray-400 font-normal">읽기 권한 · 선택 없으면 전체 공개</span>
+      </label>
+      <div class="mt-2 flex flex-wrap gap-2">
+        {% set current_roles = (post.allowed_roles if post else []) %}
+        {% for r in selectable_roles %}
+        <label class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer hover:bg-gray-50">
+          <input type="checkbox" class="role-chk" value="{{ r }}"
+                 {% if current_roles and r in current_roles %}checked{% endif %}>
+          <span>{{ r }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="mt-1 text-[11px] text-gray-400">Only selected roles can read this post. Admin always has access.</div>
+    </div>
+
+    <!-- Notify Campus Groups -->
+    <div class="mb-5 pt-4 border-t border-gray-200">
+      <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider">
+        Notify Campuses <span class="text-gray-400 font-normal">캠퍼스 알림 · 발행 시 해당 캠퍼스에 알림 전송</span>
+      </label>
+      <div class="mt-2 flex flex-wrap gap-2" id="campus-checkboxes">
+        {% set campus_list = [
+          ('Campus A','CMA'),('Campus B','CMB'),('Campus C','CMC'),('Campus D','CMD'),
+          ('Campus E','CME'),('Campus F','CMF'),('Campus G','CMG'),('Campus H','CMH'),
+          ('Campus I','CMI'),('Campus J','CMJ'),('Campus K','CMK'),('Campus L','CML'),
+          ('Campus M','CMM'),('SUB','SUB')
+        ] %}
+        {% set current_campuses = (post.notify_campuses if post else []) %}
+        {% for ko, en in campus_list %}
+        <label class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer hover:bg-gray-50" title="{{ ko }}">
+          <input type="checkbox" class="campus-chk" value="{{ ko }}"
+                 {% if current_campuses and ko in current_campuses %}checked{% endif %}>
+          <span>{{ en }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="mt-1 text-[11px] text-gray-400">Selected campus members will be notified when this post is published.</div>
+    </div>
+
+    <!-- Target Users -->
+    <div class="mb-5 pt-4 border-t border-gray-200">
+      <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider">
+        Target Users <span class="text-gray-400 font-normal">대상 사용자 · 이 게시글을 읽어야 하는 특정 사용자 지정</span>
+      </label>
+      <div class="mt-2 flex items-center gap-3 flex-wrap">
+        <button type="button" onclick="openTargetUsersModal()"
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-[var(--primary)] text-[var(--primary)] text-sm font-semibold hover:bg-[var(--primary)]/5 transition-colors">
+          <i class="bi bi-person-plus-fill"></i> Select Users
+        </button>
+        <span id="target-users-count" class="text-xs font-semibold text-gray-500">
+          <span id="target-count-num">0</span> users selected
+        </span>
+      </div>
+      <div id="target-users-chips" class="mt-2 flex flex-wrap gap-2"></div>
+      <div class="mt-2">
+        <label class="inline-flex items-center gap-2 text-xs cursor-pointer">
+          <input type="checkbox" id="notify-target-email">
+          <i class="bi bi-envelope-at"></i>
+          <span>Send email notification to target users <span class="text-gray-400 font-normal">대상 사용자에게 이메일 발송</span></span>
+        </label>
+      </div>
+      <div class="mt-1 text-[11px] text-gray-400">Selected users will receive a notification when this post is published. Max 50 users.</div>
+    </div>
+
+    <!-- Pinned + Visibility -->
+    <div class="mb-5 flex flex-wrap items-center gap-6">
+      <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" id="pinned"
+               {% if post and post.pinned %}checked{% endif %}>
+        <i class="bi bi-pin-angle"></i>
+        <span>Pin to Top <span class="text-[11px] text-gray-400 font-normal">상단 고정</span></span>
+      </label>
+      <div class="flex items-center gap-1 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+        <i class="bi bi-eye"></i> Visibility:
+      </div>
+      <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+        <input type="radio" name="visibility" value="published"
+               {% if not post or post.get('status') != 'hidden' %}checked{% endif %}>
+        <i class="bi bi-globe text-green-600"></i>
+        <span>Public <span class="text-gray-400 font-normal">전체 공개</span></span>
+      </label>
+      <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+        <input type="radio" name="visibility" value="hidden"
+               {% if post and post.get('status') == 'hidden' %}checked{% endif %}>
+        <i class="bi bi-eye-slash text-orange-500"></i>
+        <span>Admin Only <span class="text-gray-400 font-normal">숨김</span></span>
+      </label>
+    </div>
+
+    <!-- Editor -->
+    <div class="mb-5 pt-4 border-t border-gray-200">
+      <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider mb-2 block">
+        Content <span class="text-gray-400 font-normal">본문</span>
+      </label>
+      <div class="rounded-xl border-2 border-gray-300 shadow-sm overflow-hidden bg-white">
+        <div id="editor">{% if post %}{{ post.content | safe }}{% endif %}</div>
+      </div>
+      <input type="file" id="image-input" accept="image/*" class="hidden">
+    </div>
+
+    <!-- YouTube URLs -->
+    <div class="mb-5 pt-4 border-t border-gray-200">
+      <div class="flex items-center justify-between">
+        <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider">
+          YouTube URLs <span class="text-gray-400 font-normal">최대 5개</span>
+        </label>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-add-yt" class="text-xs text-[var(--primary)] font-semibold hover:underline">
+            <i class="bi bi-plus-circle"></i> Add URL
+          </button>
+          <span class="text-gray-300 text-xs">|</span>
+          <button type="button" id="btn-insert-yt-marker"
+                  class="text-xs text-[var(--primary)] font-semibold hover:underline"
+                  title="Insert a ▶ placeholder at the cursor position in the editor — the YouTube video will appear there">
+            <i class="bi bi-play-circle-fill"></i> Insert in Content
+          </button>
+        </div>
+      </div>
+      <div id="yt-list" class="mt-2 space-y-2"></div>
+      <p class="mt-2 text-[11px] text-gray-400">
+        <i class="bi bi-info-circle"></i>
+        Use <b>Insert in Content</b> to place a video inline inside the body text.
+        Or choose a fixed position below.
+      </p>
+      <div class="mt-2 flex items-center gap-2">
+        <span class="text-[11px] text-gray-400">Fixed position (if no inline marker):</span>
+        <select id="yt-position"
+                class="text-[11px] border border-gray-300 rounded-md px-2 py-1 text-gray-600 focus:outline-none focus:border-[var(--primary)]">
+          <option value="bottom" {% if post and post.youtube_position == 'bottom' %}selected{% endif %}>After images (bottom)</option>
+          <option value="after_content" {% if post and post.youtube_position == 'after_content' %}selected{% endif %}>After content (before images)</option>
+          <option value="top" {% if post and post.youtube_position == 'top' %}selected{% endif %}>Before content (top)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Poll -->
+    <div class="mb-5 pt-4 border-t border-gray-200">
+      <div class="flex items-center gap-2 mb-2">
+        <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider">
+          Poll <span class="text-gray-400 font-normal">투표</span>
+        </label>
+        <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+          <input type="checkbox" id="poll-enabled"
+                 {% if post and post.poll and post.poll.enabled %}checked{% endif %}>
+          <span>Enable poll</span>
+        </label>
+      </div>
+      <div id="poll-config" class="{% if not (post and post.poll and post.poll.enabled) %}hidden{% endif %} bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
+        <div>
+          <label class="text-[11px] text-gray-500 font-semibold">Question</label>
+          <input type="text" id="poll-question" maxlength="500"
+                 value="{{ post.poll.question if post and post.poll else '' }}"
+                 placeholder="What would you like to ask?"
+                 class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-[var(--primary)]">
+        </div>
+        <div>
+          <label class="text-[11px] text-gray-500 font-semibold">Mode</label>
+          <div class="mt-1 flex gap-3">
+            <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="radio" name="poll-mode" value="named"
+                     {% if not (post and post.poll and post.poll.mode == 'anonymous') %}checked{% endif %}>
+              <span><i class="bi bi-person-check"></i> Named (name visible)</span>
+            </label>
+            <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="radio" name="poll-mode" value="anonymous"
+                     {% if post and post.poll and post.poll.mode == 'anonymous' %}checked{% endif %}>
+              <span><i class="bi bi-eye-slash"></i> Anonymous</span>
+            </label>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-[11px] text-gray-500 font-semibold">Options (min 2)</label>
+            <button type="button" id="btn-add-poll-opt" class="text-xs text-[var(--primary)] font-semibold hover:underline">
+              <i class="bi bi-plus-circle"></i> Add option
+            </button>
+          </div>
+          <div id="poll-options-list" class="space-y-2"></div>
+        </div>
+        <div>
+          <label class="text-[11px] text-gray-500 font-semibold">End date <span class="font-normal text-gray-400">(optional — leave blank for no expiry)</span></label>
+          <div class="mt-1 flex items-center gap-2 flex-wrap">
+            <!-- Hidden combined datetime value read by getPollPayload() -->
+            <input type="hidden" id="poll-ends-at"
+                   value="{{ post.poll.ends_at[:16] if post and post.poll and post.poll.ends_at else '' }}">
+            <!-- Date portion — replaced by DYBDatepicker -->
+            <input type="hidden" id="poll-ends-date"
+                   value="{{ post.poll.ends_at[:10] if post and post.poll and post.poll.ends_at else '' }}">
+            <!-- Time portion: hour + minute selects (locale-independent, always English) -->
+            <div class="flex items-center gap-1">
+              <select id="poll-ends-hour"
+                      class="px-2 py-[7px] border-[1.5px] border-[#a1a1aa] rounded-lg text-[.82rem] font-medium bg-white text-[#3f3f46] focus:outline-none focus:border-[#870009] transition-all shadow-[0_1px_4px_rgba(0,0,0,.10)] cursor-pointer">
+                {% set _h = (post.poll.ends_at[11:13] | int) if post and post.poll and post.poll.ends_at else 9 %}
+                {% for h in range(24) %}
+                <option value="{{ '%02d'|format(h) }}" {{ 'selected' if h == _h }}>{{ '%02d'|format(h) }}h</option>
+                {% endfor %}
+              </select>
+              <span class="text-gray-400 font-bold text-sm">:</span>
+              <select id="poll-ends-minute"
+                      class="px-2 py-[7px] border-[1.5px] border-[#a1a1aa] rounded-lg text-[.82rem] font-medium bg-white text-[#3f3f46] focus:outline-none focus:border-[#870009] transition-all shadow-[0_1px_4px_rgba(0,0,0,.10)] cursor-pointer">
+                {% set _m = (post.poll.ends_at[14:16] | int // 5 * 5) if post and post.poll and post.poll.ends_at else 0 %}
+                {% for m in range(0, 60, 5) %}
+                <option value="{{ '%02d'|format(m) }}" {{ 'selected' if m == _m }}>{{ '%02d'|format(m) }}m</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Attachments -->
+    <div class="mb-2 pt-4 border-t border-gray-200">
+      <div class="flex items-center justify-between">
+        <label class="text-[11px] font-bold text-[var(--primary)] uppercase tracking-wider">
+          Attachments <span class="text-gray-400 font-normal">첨부파일 · 최대 10MB</span>
+        </label>
+        <button type="button" id="btn-add-attach"
+                class="text-xs font-semibold {% if storage_enabled %}text-[var(--primary)] hover:underline{% else %}text-gray-300 cursor-not-allowed{% endif %}"
+                {% if not storage_enabled %}title="FIREBASE_STORAGE_BUCKET not configured"{% endif %}>
+          <i class="bi bi-plus-circle"></i> Add File
+        </button>
+      </div>
+      <input type="file" id="attach-input" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp,.hwpx,.zip,.txt,.jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.avi,.webm,.mkv,.m4v,.flv,.wmv,.mpeg">
+      {% if not storage_enabled %}
+      <p class="text-[11px] text-gray-400 mt-1"><i class="bi bi-exclamation-circle"></i> File upload requires Storage configuration (production only).</p>
+      {% endif %}
+      <ul id="attach-list" class="mt-2 space-y-2"></ul>
+      <div id="attach-toast" class="hidden mt-1 text-[11px] text-green-600 font-semibold flex items-center gap-1">
+        <i class="bi bi-check-circle-fill"></i> <span id="attach-toast-msg"></span>
+      </div>
+    </div>
+
+  </div>
+</div><!-- /card -->
+</div><!-- /max-w wrapper -->
+
+<!-- ── Target Users Modal ── -->
+<div id="targetUsersModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:12px;width:100%;max-width:580px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.22);animation:tuModalIn .15s ease">
+    <!-- Modal Header -->
+    <div style="padding:18px 22px 14px;border-bottom:1.5px solid var(--outline-variant);display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0">
+      <div>
+        <h3 style="font-size:16px;font-weight:800;color:var(--text-strong);display:flex;align-items:center;gap:8px">
+          <i class="bi bi-people-fill" style="color:var(--primary)"></i> Select Target Users
+        </h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:3px">
+          대상 사용자 선택 · <span id="modal-selected-count" style="font-weight:700;color:var(--primary)">0</span> / 50 selected
+        </p>
+      </div>
+      <button onclick="closeTargetUsersModal()"
+        style="width:34px;height:34px;border-radius:8px;border:1.5px solid var(--outline-variant);background:var(--surface-low);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text-muted);flex-shrink:0">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <!-- Search -->
+    <div style="padding:12px 22px;border-bottom:1px solid var(--border-soft);flex-shrink:0">
+      <div style="position:relative">
+        <i class="bi bi-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:13px"></i>
+        <input type="text" id="modal-user-search" placeholder="이름, 이메일, 캠퍼스로 검색… / Search by name, email, or campus"
+          oninput="filterModalUsers(this.value)"
+          autocomplete="off"
+          style="width:100%;padding:9px 12px 9px 36px;border:1.5px solid var(--outline-variant);border-radius:8px;font-size:13px;outline:none;box-sizing:border-box"
+          onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='#d1d5db'">
+      </div>
+    </div>
+    <!-- Select All / Clear Row -->
+    <div style="padding:8px 22px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer">
+        <input type="checkbox" id="modal-select-all" onchange="toggleModalSelectAll(this.checked)"
+          style="accent-color:var(--primary);width:15px;height:15px">
+        Select All Visible
+      </label>
+      <span id="modal-filtered-count" style="font-size:11px;color:var(--text-dim)"></span>
+    </div>
+    <!-- User List -->
+    <div id="modal-user-list" style="flex:1;overflow-y:auto;padding:4px 0;min-height:180px">
+      <div id="modal-loading" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:40px;color:var(--text-dim);font-size:13px">
+        <div style="width:18px;height:18px;border:2.5px solid var(--outline-variant);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite"></div>
+        Loading users…
+      </div>
+    </div>
+    <!-- Footer -->
+    <div style="padding:14px 22px;border-top:1.5px solid var(--outline-variant);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <button onclick="modalClearAll()"
+        style="font-size:12px;font-weight:600;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:6px 10px;border-radius:6px"
+        onmouseover="this.style.background='var(--surface-low)'" onmouseout="this.style.background='none'">
+        <i class="bi bi-x-circle mr-1"></i>Clear All
+      </button>
+      <div style="display:flex;gap:10px">
+        <button onclick="closeTargetUsersModal()"
+          style="padding:8px 20px;border-radius:8px;border:1.5px solid var(--outline-variant);background:var(--surface);font-size:13px;font-weight:600;color:var(--text);cursor:pointer"
+          onmouseover="this.style.background='var(--surface-low)'" onmouseout="this.style.background='var(--surface)'">
+          Cancel
+        </button>
+        <button onclick="applyTargetUsers()"
+          style="padding:8px 24px;border-radius:8px;background:var(--primary);border:1.5px solid var(--primary);font-size:13px;font-weight:700;color:#fff;cursor:pointer"
+          onmouseover="this.style.background='var(--primary-dark)'" onmouseout="this.style.background='var(--primary)'">
+          <i class="bi bi-check mr-1"></i>Apply
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+@keyframes tuModalIn { from{opacity:0;transform:scale(.97) translateY(6px)} to{opacity:1;transform:none} }
+</style>
+
+<script>
+(function(){
+  const postData = {{ post | tojson if post else 'null' }};
+  const isEdit = !!postData;
+  const postId = (postData && postData.id) || '';
+  const initialVersion = postData ? (postData.version || 0) : 0;
+  const storageEnabled = {{ 'true' if storage_enabled else 'false' }};
+
+  // ── YouTube inline marker blot ──
+  // Registers a block-level embed that renders a visual placeholder in the editor.
+  // Saved as <div class="yt-embed-marker"> in Firestore; detail page replaces it with iframes.
+  (function registerYTBlot(){
+    try {
+      const BlockEmbed = Quill.import('blots/block/embed');
+      class YTMarkerBlot extends BlockEmbed {
+        static create() {
+          const node = super.create();
+          node.innerHTML = '<div style="pointer-events:none;padding:9px 14px;text-align:center;color:var(--primary);font-weight:700;font-size:12px;border:2px dashed var(--primary);border-radius:8px;background:#fff5f5;"><span style="margin-right:6px;">▶</span>YouTube video will appear here</div>';
+          return node;
+        }
+        static value() { return true; }
+      }
+      YTMarkerBlot.blotName = 'yt-marker';
+      YTMarkerBlot.tagName = 'div';
+      YTMarkerBlot.className = 'yt-embed-marker';
+      Quill.register(YTMarkerBlot);
+    } catch(e) { console.warn('YTMarkerBlot registration failed', e); }
+  })();
+
+  // Quill setup
+  const toolbarOptions = [
+    [{ header: [1,2,3,false] }],
+    ['bold','italic','underline','strike'],
+    [{ color: [] },{ background: [] }],
+    [{ list: 'ordered' },{ list: 'bullet' }],
+    [{ align: [] }],
+    ['blockquote','code-block'],
+    ['link','image'],
+    ['clean'],
+  ];
+  const quill = new Quill('#editor', {
+    theme: 'snow',
+    modules: { toolbar: { container: toolbarOptions, handlers: { image: imageHandler } } },
+  });
+
+  // ── Toolbar tooltips ──
+  const _ttips = {
+    'ql-bold':        'Bold (Ctrl+B)',
+    'ql-italic':      'Italic (Ctrl+I)',
+    'ql-underline':   'Underline (Ctrl+U)',
+    'ql-strike':      'Strikethrough',
+    'ql-blockquote':  'Blockquote',
+    'ql-code-block':  'Code Block',
+    'ql-link':        'Insert Link',
+    'ql-image':       'Insert Image',
+    'ql-clean':       'Clear Formatting',
+    'ql-color':       'Text Color',
+    'ql-background':  'Highlight Color',
+    'ql-header':      'Heading',
+    'ql-align':       'Text Alignment',
+  };
+  document.querySelectorAll('.ql-toolbar button, .ql-toolbar .ql-picker').forEach(el => {
+    const cls = Array.from(el.classList).find(c => _ttips[c]);
+    if(cls) el.setAttribute('title', _ttips[cls]);
+  });
+  const _listTips = {'ordered':'Numbered List','bullet':'Bullet List'};
+  document.querySelectorAll('.ql-toolbar button.ql-list').forEach(el => {
+    const v = el.getAttribute('value');
+    if(_listTips[v]) el.setAttribute('title', _listTips[v]);
+  });
+
+  // ── Images inside Quill ──
+  const uploadedImages = [];
+  const imageInput = document.getElementById('image-input');
+
+  const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg','image/jpg','image/png','image/webp','image/gif']);
+  let _imgUploading = false;
+
+  async function uploadAndInsertImage(file) {
+    if (!storageEnabled) { alert('Image upload is disabled. Contact your administrator.'); return; }
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { alert('Unsupported image type: ' + file.type); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Image too large (max 10 MB).'); return; }
+    _imgUploading = true;
+    /* loading overlay */
+    const overlay = document.createElement('div');
+    overlay.className = 'img-upload-overlay';
+    Object.assign(overlay.style, {
+      position:'absolute', inset:'0', background:'rgba(255,255,255,.7)',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      zIndex:'50', borderRadius:'12px', pointerEvents:'none',
+    });
+    overlay.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--text-muted);"><div style="width:18px;height:18px;border:2.5px solid var(--outline-variant);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;"></div>Uploading image…</div>';
+    const editorWrap = document.querySelector('.ql-container');
+    editorWrap.style.position = 'relative';
+    editorWrap.appendChild(overlay);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (postId) fd.append('post_id', postId);
+      const res = await fetch('/api/announcements/upload-image', {
+        method: 'POST', credentials: 'same-origin', body: fd,
+      });
+      const data = await res.json();
+      if (data.status !== 'SUCCESS') { alert(data.message || 'Upload failed.'); return; }
+      const range = quill.getSelection(true);
+      quill.insertEmbed(range.index, 'image', data.url, 'user');
+      quill.setSelection(range.index + 1);
+      uploadedImages.push({
+        path: data.path, url: data.url,
+        content_type: data.content_type, size: data.size,
+        width: data.width, height: data.height,
+      });
+    } catch (e) { console.error(e); alert('Upload error. Please try again.'); }
+    finally { overlay.remove(); _imgUploading = false; }
+  }
+
+  function imageHandler() {
+    if (!storageEnabled) { alert('Image upload is disabled. Contact your administrator.'); return; }
+    imageInput.click();
+  }
+  imageInput.addEventListener('change', async () => {
+    const f = imageInput.files && imageInput.files[0];
+    if (f) await uploadAndInsertImage(f);
+    imageInput.value = '';
+  });
+
+  /* ── Drag-and-drop images onto editor ── */
+  quill.root.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    quill.root.style.outline = '2px dashed var(--primary)';
+    quill.root.style.outlineOffset = '-4px';
+  });
+  quill.root.addEventListener('dragleave', () => {
+    quill.root.style.outline = '';
+    quill.root.style.outlineOffset = '';
+  });
+  quill.root.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    quill.root.style.outline = '';
+    quill.root.style.outlineOffset = '';
+    if (_imgUploading) return;
+    const files = Array.from(e.dataTransfer.files).filter(f => ALLOWED_IMAGE_TYPES.has(f.type));
+    for (const f of files) await uploadAndInsertImage(f);
+  });
+
+  /* ── Paste images from clipboard ── */
+  quill.root.addEventListener('paste', async (e) => {
+    if (_imgUploading) return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    const imgItems = Array.from(items).filter(it => ALLOWED_IMAGE_TYPES.has(it.type));
+    if (!imgItems.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // 직렬 처리 — 동시에 여러 이미지가 업로드되면 오버레이가 중복 생성됨
+    for (const it of imgItems) {
+      const file = it.getAsFile();
+      if (file) await uploadAndInsertImage(file);
+    }
+  });
+
+  /* ═══════════════════════════════════════════════════════════
+     @Mention system — admin only, no external dependencies
+     ═══════════════════════════════════════════════════════════ */
+  {% if is_admin %}
+  const mentionedUsers = [];
+  let _mentionDropdown = null;
+  let _mentionQuery = '';
+  let _mentionStart = -1;
+  let _mentionTimer = null;
+  const _MAX_MENTIONS = 20;
+
+  function _createMentionDropdown(){
+    if(_mentionDropdown) return _mentionDropdown;
+    const d = document.createElement('div');
+    d.id = 'mention-dropdown';
+    Object.assign(d.style, {
+      position:'absolute', display:'none', zIndex:'200',
+      background:'var(--surface)', border:'1px solid var(--outline-variant)', borderRadius:'10px',
+      boxShadow:'0 8px 24px rgba(0,0,0,.12)', maxHeight:'200px', overflowY:'auto',
+      width:'260px', padding:'4px 0',
+    });
+    document.querySelector('.ql-container').appendChild(d);
+    _mentionDropdown = d;
+    d.addEventListener('mousedown', (e)=>{ e.preventDefault(); });
+    return d;
+  }
+
+  function _closeMentionDropdown(){
+    if(_mentionDropdown) _mentionDropdown.style.display='none';
+    _mentionStart = -1; _mentionQuery = '';
+  }
+
+  function _escH(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+  async function _fetchMentionUsers(q){
+    try{
+      // role label 캐시 워밍 (mention dropdown 첫 표시 시 label 사용)
+      if (typeof window.dybLoadRoleLabels === 'function') window.dybLoadRoleLabels();
+      const r = await fetch(`/api/users/search?q=${encodeURIComponent(q)}&limit=8`,{credentials:'same-origin'});
+      const d = await r.json();
+      return d.status==='SUCCESS' ? (d.users||[]) : [];
+    }catch(e){ return []; }
+  }
+
+  function _renderMentionResults(users){
+    const dd = _createMentionDropdown();
+    if(!users.length){ dd.style.display='none'; return; }
+    dd.innerHTML = users.map((u,i)=>`
+      <div data-idx="${i}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;transition:background .12s;font-size:13px;"
+           onmouseover="this.style.background='var(--surface-low)';" onmouseout="this.style.background='transparent';">
+        <div style="width:28px;height:28px;border-radius:6px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;">${_escH((u.name||'?')[0]).toUpperCase()}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;color:var(--text-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_escH(u.name)}</div>
+          <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_escH(u.campus||'')} · ${_escH((typeof dybRoleLabel==='function'?dybRoleLabel(u.role):u.role)||'')}</div>
+        </div>
+      </div>
+    `).join('');
+    dd.querySelectorAll('[data-idx]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const idx = parseInt(el.dataset.idx);
+        _insertMention(users[idx]);
+      });
+    });
+    // Position near cursor
+    const sel = quill.getSelection();
+    if(sel){
+      const bounds = quill.getBounds(sel.index);
+      dd.style.left = bounds.left + 'px';
+      dd.style.top = (bounds.top + bounds.height + 4) + 'px';
+    }
+    dd.style.display='block';
+  }
+
+  function _insertMention(user){
+    if(mentionedUsers.length >= _MAX_MENTIONS){
+      alert('Maximum ' + _MAX_MENTIONS + ' mentions per post.'); _closeMentionDropdown(); return;
+    }
+    const sel = quill.getSelection();
+    if(!sel){ _closeMentionDropdown(); return; }
+    // Delete the @query text
+    const deleteLen = sel.index - _mentionStart;
+    quill.deleteText(_mentionStart, deleteLen, 'user');
+    // Insert styled mention text
+    const mentionText = '@' + user.name;
+    quill.insertText(_mentionStart, mentionText, {
+      bold: true,
+      color: 'var(--primary)',
+    }, 'user');
+    quill.insertText(_mentionStart + mentionText.length, ' ', {bold:false, color:'#000'}, 'user');
+    quill.setSelection(_mentionStart + mentionText.length + 1);
+    // Track mention
+    if(!mentionedUsers.find(m=>m.email===user.email)){
+      mentionedUsers.push({email:user.email, name:user.name, campus:user.campus||''});
+    }
+    _closeMentionDropdown();
+  }
+
+  quill.on('text-change', ()=>{
+    if(_mentionStart < 0) return;
+    const sel = quill.getSelection();
+    if(!sel){ _closeMentionDropdown(); return; }
+    const text = quill.getText(0, sel.index);
+    const atIdx = text.lastIndexOf('@');
+    if(atIdx < 0 || atIdx !== _mentionStart){ _closeMentionDropdown(); return; }
+    const q = text.slice(atIdx + 1);
+    if(q.length > 20 || q.includes('\n')){ _closeMentionDropdown(); return; }
+    _mentionQuery = q;
+    clearTimeout(_mentionTimer);
+    if(q.length >= 1){
+      _mentionTimer = setTimeout(async ()=>{
+        const users = await _fetchMentionUsers(q);
+        _renderMentionResults(users);
+      }, 300);
+    } else {
+      _closeMentionDropdown();
+    }
+  });
+
+  quill.root.addEventListener('keydown', (e)=>{
+    if(e.key === '@'){
+      const sel = quill.getSelection();
+      if(sel) _mentionStart = sel.index + 1; // will be after the @ is inserted
+    }
+    if(e.key === 'Escape') _closeMentionDropdown();
+  });
+  {% else %}
+  // @Mention disabled for non-admin users
+  const mentionedUsers = [];
+  {% endif %}
+
+  // ── Target Users ──
+  const targetUsersList = [];
+  {% if post and post.target_users %}
+  {% for tu in post.target_users %}
+  targetUsersList.push({email:'{{ tu.email }}', name:'{{ tu.name }}'});
+  {% endfor %}
+  {% endif %}
+
+  function _escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+  function renderTargetChips(){
+    const el = document.getElementById('target-users-chips');
+    const countEl = document.getElementById('target-count-num');
+    el.innerHTML = targetUsersList.map((u,i) =>
+      `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px 3px 10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:11px;font-weight:600;color:var(--primary)">
+        <i class="bi bi-person-fill" style="font-size:10px"></i>
+        ${_escHtml(u.name || u.email)}
+        <button type="button" onclick="_removeTargetUser(${i})" style="background:none;border:none;cursor:pointer;color:var(--primary);font-size:14px;line-height:1;padding:0 2px">&times;</button>
+      </span>`
+    ).join('');
+    if (countEl) countEl.textContent = targetUsersList.length;
+  }
+
+  window._removeTargetUser = function(idx){
+    targetUsersList.splice(idx,1);
+    renderTargetChips();
+  };
+
+  // ── Target Users Modal ──────────────────────────────────────
+  let _allModalUsers = [];      // full user list from API
+  let _modalTempSelected = [];  // temp selection set (emails) while modal is open
+  let _modalLoaded = false;
+
+  window.openTargetUsersModal = async function(){
+    // Copy current selection into temp
+    _modalTempSelected = targetUsersList.map(u => u.email);
+    const modal = document.getElementById('targetUsersModal');
+    modal.style.display = 'flex';
+    document.getElementById('modal-user-search').value = '';
+    updateModalSelectedCount();
+
+    if (!_modalLoaded) {
+      await _loadAllModalUsers();
+      _modalLoaded = true;
+    } else {
+      // Re-render with updated checked state
+      _renderModalUsers(_allModalUsers);
+    }
+  };
+
+  async function _loadAllModalUsers(){
+    document.getElementById('modal-loading').style.display = 'flex';
+    document.getElementById('modal-user-list').innerHTML =
+      '<div id="modal-loading" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:40px;color:var(--text-dim);font-size:13px"><div style="width:18px;height:18px;border:2.5px solid var(--outline-variant);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite"></div>Loading users…</div>';
+    // role label 캐시 워밍 (recipient 목록 표시 시 label 즉시 사용)
+    if (typeof window.dybLoadRoleLabels === 'function') window.dybLoadRoleLabels();
+    try {
+      const res = await fetch('/api/users/search?q=&limit=200');
+      const data = await res.json();
+      if (data.status !== 'SUCCESS') throw new Error(data.message);
+      _allModalUsers = data.users || [];
+      _renderModalUsers(_allModalUsers);
+    } catch(e) {
+      document.getElementById('modal-user-list').innerHTML =
+        `<p style="text-align:center;padding:40px;color:#dc2626;font-size:13px">Failed to load users: ${_escHtml(e.message)}</p>`;
+    }
+  }
+
+  function _renderModalUsers(users){
+    const container = document.getElementById('modal-user-list');
+    const countEl = document.getElementById('modal-filtered-count');
+    if (countEl) countEl.textContent = `${users.length} user${users.length!==1?'s':''}`;
+
+    if (!users.length) {
+      container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);font-size:13px"><i class="bi bi-person-x" style="font-size:28px;display:block;margin-bottom:8px"></i>No users found.</div>';
+      return;
+    }
+    container.innerHTML = users.map(u => {
+      const checked = _modalTempSelected.includes(u.email);
+      const initial = (u.name||u.email||'?').charAt(0).toUpperCase();
+      const bgColors = ['var(--primary)','#1d4ed8','#059669','#d97706','#7c3aed','#0891b2'];
+      const bg = bgColors[initial.charCodeAt(0) % bgColors.length];
+      return `<label style="display:flex;align-items:center;gap:12px;padding:10px 22px;cursor:pointer;transition:background .1s;user-select:none"
+                onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='transparent'">
+        <input type="checkbox" class="modal-user-chk" data-email="${_escHtml(u.email)}" data-name="${_escHtml(u.name||'')}"
+          ${checked ? 'checked' : ''} onchange="onModalUserCheck(this)"
+          style="accent-color:var(--primary);width:16px;height:16px;flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:8px;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0">${initial}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escHtml(u.name||'')}</div>
+          <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${_escHtml(u.email)}${u.campus ? ' · '+_escHtml(u.campus) : ''}${u.role ? ' · '+_escHtml(typeof dybRoleLabel==='function'?dybRoleLabel(u.role):u.role) : ''}
+          </div>
+        </div>
+      </label>`;
+    }).join('');
+    updateSelectAllState();
+  }
+
+  window.onModalUserCheck = function(chk){
+    const email = chk.dataset.email;
+    const name  = chk.dataset.name;
+    if (chk.checked) {
+      if (_modalTempSelected.length >= 50) {
+        chk.checked = false;
+        alert('Maximum 50 users can be selected.');
+        return;
+      }
+      if (!_modalTempSelected.includes(email)) _modalTempSelected.push(email);
+    } else {
+      _modalTempSelected = _modalTempSelected.filter(e => e !== email);
+    }
+    updateModalSelectedCount();
+    updateSelectAllState();
+  };
+
+  window.toggleModalSelectAll = function(checked){
+    const visible = Array.from(document.querySelectorAll('.modal-user-chk'));
+    if (checked) {
+      visible.forEach(chk => {
+        const email = chk.dataset.email;
+        if (!_modalTempSelected.includes(email)) {
+          if (_modalTempSelected.length < 50) {
+            _modalTempSelected.push(email);
+            chk.checked = true;
+          }
+        }
+      });
+    } else {
+      const visibleEmails = visible.map(c => c.dataset.email);
+      _modalTempSelected = _modalTempSelected.filter(e => !visibleEmails.includes(e));
+      visible.forEach(chk => { chk.checked = false; });
+    }
+    updateModalSelectedCount();
+  };
+
+  function updateSelectAllState(){
+    const allChks = document.querySelectorAll('.modal-user-chk');
+    const checkedChks = document.querySelectorAll('.modal-user-chk:checked');
+    const allChk = document.getElementById('modal-select-all');
+    if (!allChk) return;
+    allChk.indeterminate = checkedChks.length > 0 && checkedChks.length < allChks.length;
+    allChk.checked = allChks.length > 0 && checkedChks.length === allChks.length;
+  }
+
+  function updateModalSelectedCount(){
+    const el = document.getElementById('modal-selected-count');
+    if (el) el.textContent = _modalTempSelected.length;
+  }
+
+  window.filterModalUsers = function(q){
+    q = (q||'').trim().toLowerCase();
+    const filtered = q.length < 1 ? _allModalUsers : _allModalUsers.filter(u =>
+      (u.name||'').toLowerCase().includes(q) ||
+      (u.email||'').toLowerCase().includes(q) ||
+      (u.campus||'').toLowerCase().includes(q) ||
+      (u.role||'').toLowerCase().includes(q)
+    );
+    _renderModalUsers(filtered);
+  };
+
+  window.modalClearAll = function(){
+    _modalTempSelected = [];
+    document.querySelectorAll('.modal-user-chk').forEach(c => { c.checked = false; });
+    updateModalSelectedCount();
+    updateSelectAllState();
+  };
+
+  window.applyTargetUsers = function(){
+    // Build list from temp selection preserving name info
+    const emailToUser = {};
+    _allModalUsers.forEach(u => { emailToUser[u.email] = u; });
+    // Also preserve any existing entries not in allModalUsers
+    targetUsersList.forEach(u => { if(!emailToUser[u.email]) emailToUser[u.email] = u; });
+
+    targetUsersList.length = 0;
+    _modalTempSelected.forEach(email => {
+      const u = emailToUser[email];
+      if (u) targetUsersList.push({email: u.email, name: u.name||''});
+    });
+    renderTargetChips();
+    closeTargetUsersModal();
+  };
+
+  window.closeTargetUsersModal = function(){
+    document.getElementById('targetUsersModal').style.display = 'none';
+  };
+
+  // Close on backdrop click
+  document.getElementById('targetUsersModal').addEventListener('click', function(e){
+    if (e.target === this) closeTargetUsersModal();
+  });
+
+  // Load existing target_users chips on edit
+  renderTargetChips();
+
+  {% if post and post.get('notify_target_email') %}
+  document.getElementById('notify-target-email').checked = true;
+  {% endif %}
+
+  // ── YouTube list ──
+  const ytList = document.getElementById('yt-list');
+  const addYtBtn = document.getElementById('btn-add-yt');
+  addYtBtn.addEventListener('click', () => addYt(''));
+
+  // ── YouTube inline marker insertion ──
+  document.getElementById('btn-insert-yt-marker').addEventListener('click', () => {
+    const urlCount = ytList.querySelectorAll('input[type=url]').length;
+    if(!urlCount){ alert('Add at least one YouTube URL first, then insert a marker.'); return; }
+    const markerCount = document.querySelectorAll('#editor .yt-embed-marker').length;
+    if(markerCount >= urlCount){
+      alert(`You have ${urlCount} YouTube URL(s) and ${markerCount} marker(s). Each marker maps to one video.`);
+      return;
+    }
+    const range = quill.getSelection(true) || {index: quill.getLength()-1};
+    quill.insertEmbed(range.index, 'yt-marker', true, 'user');
+    quill.setSelection(range.index + 1);
+  });
+  function addYt(url){
+    if(ytList.children.length >= 5){
+      alert('Maximum 5 YouTube videos allowed.');
+      return;
+    }
+    const row = document.createElement('div');
+    row.className = 'flex gap-2';
+    row.innerHTML = `
+      <input type="url" placeholder="https://youtu.be/... or https://www.youtube.com/watch?v=..."
+             value="${String(url||'').replace(/"/g,'&quot;')}"
+             class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-[var(--primary)]">
+      <button type="button" class="js-remove-yt px-3 text-red-500 hover:bg-red-50 rounded-lg" title="Remove">
+        <i class="bi bi-x-lg"></i>
+      </button>`;
+    row.querySelector('.js-remove-yt').addEventListener('click', () => row.remove());
+    ytList.appendChild(row);
+  }
+  if(postData && Array.isArray(postData.youtube_videos)){
+    postData.youtube_videos.forEach(v => addYt(v.url || ''));
+  }
+
+  // ── Attachments ──
+  const attachList = document.getElementById('attach-list');
+  const attachInput = document.getElementById('attach-input');
+  const attachBtn = document.getElementById('btn-add-attach');
+  const attachments = [];
+
+  attachBtn.addEventListener('click', () => {
+    if(!storageEnabled){ alert('File upload is disabled. Contact your administrator.'); return; }
+    if(attachments.length >= 10){ alert('Maximum 10 attachments allowed.'); return; }
+    attachInput.click();
+  });
+  attachInput.addEventListener('change', async () => {
+    const f = attachInput.files && attachInput.files[0];
+    if(!f) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      if(postId) fd.append('post_id', postId);
+      const res = await fetch('/api/announcements/upload-attachment', {
+        method:'POST', credentials:'same-origin', body: fd,
+      });
+      const data = await res.json();
+      if(data.status !== 'SUCCESS'){ alert(data.message || 'Upload failed.'); return; }
+      attachments.push({
+        path: data.path, url: data.url, filename: data.filename,
+        content_type: data.content_type, size: data.size,
+      });
+      renderAttachments();
+      // Show brief success toast
+      const toast = document.getElementById('attach-toast');
+      const toastMsg = document.getElementById('attach-toast-msg');
+      if (toast && toastMsg) {
+        toastMsg.textContent = `"${data.filename}" attached.`;
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), 3000);
+      }
+    } catch(e){ console.error(e); alert('Upload error. Please try again.'); }
+    finally { attachInput.value = ''; }
+  });
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function renderAttachments(){
+    attachList.innerHTML = '';
+    attachments.forEach((a, idx) => {
+      const li = document.createElement('li');
+      li.className = 'flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 shadow-sm';
+      li.innerHTML = `
+        <div class="flex items-center gap-2 text-sm">
+          <i class="bi bi-paperclip text-gray-400"></i>
+          <span class="text-gray-700">${esc(a.filename)}</span>
+          <span class="text-[11px] text-gray-400">(${Math.round(a.size/1024)} KB)</span>
+        </div>
+        <button type="button" class="text-red-500 text-xs hover:underline">Remove</button>`;
+      li.querySelector('button').addEventListener('click', () => {
+        attachments.splice(idx, 1);
+        renderAttachments();
+      });
+      attachList.appendChild(li);
+    });
+  }
+  if(postData && Array.isArray(postData.attachments)){
+    postData.attachments.forEach(a => attachments.push({
+      path: a.path, url: a.url, filename: a.filename,
+      content_type: a.content_type, size: a.size,
+    }));
+    renderAttachments();
+  }
+
+  // ── Preload existing images ──
+  if(postData && Array.isArray(postData.images)){
+    postData.images.forEach(i => uploadedImages.push({
+      path: i.path, url: i.url, content_type: i.content_type,
+      size: i.size, width: i.width, height: i.height,
+    }));
+  }
+
+  // ── Poll config ──
+  const pollEnabledChk = document.getElementById('poll-enabled');
+  const pollConfig = document.getElementById('poll-config');
+  const pollOptsList = document.getElementById('poll-options-list');
+
+  pollEnabledChk.addEventListener('change', () => {
+    pollConfig.classList.toggle('hidden', !pollEnabledChk.checked);
+  });
+
+  // ── Poll end date: DYBDatepicker + hour/minute select sync ──
+  function syncPollEndsAt() {
+    const date   = document.getElementById('poll-ends-date').value;
+    const hour   = document.getElementById('poll-ends-hour').value;
+    const minute = document.getElementById('poll-ends-minute').value;
+    document.getElementById('poll-ends-at').value = date ? `${date}T${hour}:${minute}` : '';
+  }
+  // Initialize DYBDatepicker on date portion
+  if (typeof DYBDatepicker !== 'undefined') {
+    DYBDatepicker.replace('poll-ends-date', {
+      placeholder: 'Select date',
+      onChange: syncPollEndsAt,
+    });
+  }
+  // Keep combined value in sync when hour or minute changes
+  document.getElementById('poll-ends-hour').addEventListener('change', syncPollEndsAt);
+  document.getElementById('poll-ends-minute').addEventListener('change', syncPollEndsAt);
+  // Initialize combined value on load (in case of existing data)
+  syncPollEndsAt();
+
+  function addPollOption(id, label){
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-center';
+    const safeLabel = String(label||'').replace(/"/g,'&quot;');
+    row.innerHTML = `
+      <input type="text" maxlength="200" placeholder="Option text"
+             value="${safeLabel}"
+             data-opt-id="${String(id||'').replace(/"/g,'&quot;')}"
+             class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-[var(--primary)]">
+      <button type="button" class="js-rm-poll-opt px-2 text-red-500 hover:bg-red-50 rounded-lg text-sm" title="Remove">
+        <i class="bi bi-x-lg"></i>
+      </button>`;
+    row.querySelector('.js-rm-poll-opt').addEventListener('click', () => row.remove());
+    pollOptsList.appendChild(row);
+  }
+
+  document.getElementById('btn-add-poll-opt').addEventListener('click', () => {
+    if(pollOptsList.children.length >= 10){ alert('Maximum 10 options.'); return; }
+    addPollOption('', '');
+    pollOptsList.lastElementChild.querySelector('input').focus();
+  });
+
+  // Pre-load existing options when editing
+  if(postData && postData.poll && Array.isArray(postData.poll.options)){
+    postData.poll.options.forEach(o => addPollOption(o.id, o.label));
+  } else {
+    // Default two empty options for new polls
+    addPollOption('', '');
+    addPollOption('', '');
+  }
+
+  function getPollPayload(){
+    if(!pollEnabledChk.checked) return null;
+    const question = document.getElementById('poll-question').value.trim();
+    const mode = document.querySelector('input[name="poll-mode"]:checked')?.value || 'named';
+    const options = Array.from(pollOptsList.querySelectorAll('input[type=text]'))
+      .map(inp => ({id: inp.dataset.optId || '', label: inp.value.trim()}))
+      .filter(o => o.label);
+    const endsAt = document.getElementById('poll-ends-at').value;
+    return {
+      enabled: true,
+      question,
+      mode,
+      options,
+      ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+    };
+  }
+
+  // ── Save ──
+  const saveBtn      = document.getElementById('btn-save');
+  const saveDraftBtn = document.getElementById('btn-save-draft');
+
+  async function doSave(publish) {
+    const title = document.getElementById('title').value.trim();
+    if(!title){ alert('Please enter a title.'); return; }
+
+    const quillText = quill.getText().trim();
+    if(!quillText){ alert('Please enter content.'); return; }
+
+    const content = quill.root.innerHTML;
+    const roles = Array.from(document.querySelectorAll('.role-chk:checked')).map(c => c.value);
+    const pinned = document.getElementById('pinned').checked;
+
+    const ytUrls = Array.from(ytList.querySelectorAll('input[type=url]'))
+      .map(i => i.value.trim())
+      .filter(Boolean);
+
+    // Only include images actually in the editor HTML
+    const editorHtml = quill.root.innerHTML;
+    const usedImages = uploadedImages.filter(img =>
+      editorHtml.indexOf(img.url) !== -1 || editorHtml.indexOf(img.path) !== -1
+    );
+
+    const ytPosition = document.getElementById('yt-position').value;
+
+    const poll = getPollPayload();
+    if(poll && (!poll.question || poll.options.length < 2)){
+      alert('Poll requires a question and at least 2 options.'); return;
+    }
+
+    const visibility = document.querySelector('input[name="visibility"]:checked')?.value || 'published';
+    const notifyCampuses = Array.from(document.querySelectorAll('.campus-chk:checked')).map(c => c.value);
+    const payload = {
+      post_id: postId || null,
+      title,
+      content,
+      youtube_urls: ytUrls,
+      youtube_position: ytPosition,
+      image_refs: usedImages,
+      attachment_refs: attachments,
+      allowed_roles: roles,
+      pinned,
+      poll,
+      version: initialVersion,
+      publish,
+      visibility: publish ? visibility : 'draft',
+      notify_campuses: notifyCampuses,
+      mentions: mentionedUsers,
+      target_users: targetUsersList,
+      notify_target_email: document.getElementById('notify-target-email')?.checked || false,
+    };
+
+    saveBtn.disabled = true;
+    saveDraftBtn.disabled = true;
+    if(publish){
+      saveBtn.textContent = 'Publishing...';
+    } else {
+      saveDraftBtn.textContent = 'Saving...';
+    }
+    try {
+      const res = await fetch('/api/announcements/save', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if(data.status === 'SUCCESS'){
+        if(publish){
+          location.href = `/announcements/${encodeURIComponent(data.post_id)}`;
+        } else {
+          location.href = '/announcements';
+        }
+      } else if(data.status === 'CONFLICT'){
+        alert('Another user saved first. Please refresh and try again.');
+      } else {
+        alert(data.message || 'Save failed.');
+      }
+    } catch(e){
+      console.error(e);
+      alert('An error occurred while saving.');
+    } finally {
+      saveBtn.disabled = false;
+      saveDraftBtn.disabled = false;
+      saveBtn.innerHTML = '<i class="bi bi-send"></i> Publish';
+      saveDraftBtn.innerHTML = '<i class="bi bi-file-earmark"></i> Save as Draft';
+    }
+  }
+
+  saveBtn.addEventListener('click', () => doSave(true));
+  saveDraftBtn.addEventListener('click', () => doSave(false));
+})();
+</script>
+{% endblock %}

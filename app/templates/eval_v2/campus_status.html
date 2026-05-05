@@ -1,0 +1,308 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | Campus Eval Status{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+{# campus_status.js 가 Lucide 아이콘(lucideIcon helper) 을 사용하므로 이
+   페이지만 Lucide UMD 를 로드한다. layout.html 은 Bootstrap Icons 만 사용.
+   known-issues.md 규칙: 버전 고정 + SRI + defer, @latest 금지.
+   jsdelivr 선택 이유: CSP script-src 에 이미 허용된 CDN 이라 정책 변경 불요. #}
+<script defer
+        src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"
+        integrity="sha384-hJnF5AwidE18GSWTAGHv3ByzzvfNZ1Tcx5y1UUV3WkauuMCEzBJBMSwSt/PUPXnM"
+        crossorigin="anonymous"></script>
+
+<style>
+  /* ─ campus_status Phase G 토큰화 ─
+     중립(배경/테두리/텍스트) 은 tokens.css 변수로 자동 테마 전환.
+     시맨틱 색(badge, done/pending accent) 은 라이트 그대로 유지 + 파일 하단
+     html[data-theme="dark"] 블록에서 다크 variant 로 override. 새 글로벌 토큰
+     추가하지 않음 — 3~4 페이지 공통 패턴 확정 후 tokens.css 승격. */
+
+  .cs-page { font-family: 'Inter', sans-serif; }
+
+  /* ── 카드 ── */
+  .cs-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+  }
+  .cs-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, var(--surface-low) 0%, var(--border-soft) 100%);
+    border-bottom: 2px solid var(--border);
+  }
+
+  /* ── Teacher row ── */
+  .teacher-row {
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    transition: border-color .18s, box-shadow .18s, background .18s;
+    cursor: pointer;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .teacher-row.done {
+    border-color: #6ee7a0;
+    background: linear-gradient(135deg, #f0fdf4 0%, #f7fffe 100%);
+    box-shadow: 0 1px 3px rgba(34,197,94,.12);
+  }
+  .teacher-row:hover {
+    border-color: var(--primary);
+    box-shadow: 0 3px 10px var(--primary-soft);
+  }
+  .teacher-row.done:hover {
+    border-color: #22c55e;
+    box-shadow: 0 3px 10px rgba(34,197,94,.18);
+  }
+
+  /* 헤더 4열 그리드 */
+  .teacher-row-grid {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) 100px minmax(120px, 2fr) 96px;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+  }
+
+  /* 드롭다운 패널 — max-height 트랜지션으로 부드러운 열기/닫기 */
+  .cs-detail-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height .28s ease, opacity .22s ease, padding .22s ease;
+    opacity: 0;
+    padding: 0 16px;
+    background: var(--surface-low);
+    border-top: 0px solid var(--border);
+  }
+  .cs-detail-panel.open {
+    max-height: 600px;
+    opacity: 1;
+    padding: 10px 16px 14px;
+    border-top-width: 1.5px;
+  }
+  .teacher-row.done .cs-detail-panel {
+    background: #ecfdf5;
+    border-top-color: #6ee7a0;
+  }
+  .cs-rater-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: .78rem;
+  }
+  .cs-rater-row:last-child { border-bottom: none; }
+  .cs-rater-label {
+    flex-shrink: 0;
+    min-width: 80px;
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+  }
+  .cs-rater-names { flex: 1; color: var(--text-strong); line-height: 1.6; }
+
+  /* ── 사번 ── */
+  .teacher-empid {
+    font-size: .7rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: .02em;
+    margin-top: 2px;
+  }
+
+  /* ── 배지 ── */
+  .badge-base {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: .68rem; font-weight: 600;
+    border: 1.5px solid transparent;
+    white-space: nowrap;
+  }
+  .badge-done    { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+  .badge-pending { background: #fefce8; color: #854d0e; border-color: #fde047; }
+
+  .badge-type {
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    padding: 4px 10px; border-radius: 6px;
+    font-size: .7rem; font-weight: 700;
+    white-space: nowrap; width: 100%;
+  }
+  .badge-type-position { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #bfdbfe; }
+  .badge-type-regular  { background: var(--surface-low); color: var(--text-muted); border: 1.5px solid var(--border); }
+  .badge-type-tl       { background: #faf5ff; color: #6d28d9; border: 1.5px solid #ddd6fe; }
+  .badge-type-sub      { background: #fefce8; color: #713f12; border: 1.5px solid #fde68a; }
+  .badge-type-stl      { background: #fdf2f8; color: #9d174d; border: 1.5px solid #fbcfe8; }
+
+  /* ── Role badges ── */
+  .role-badges { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+
+  /* ── Overall status ── */
+  .overall-status {
+    display: flex; align-items: center; justify-content: flex-end; gap: 5px;
+    font-size: .72rem; font-weight: 700; white-space: nowrap;
+  }
+  .overall-status.done  { color: #15803d; }
+  .overall-status.pending { color: #b45309; }
+
+  /* ── 프로그레스 바 ── */
+  .cs-progress-track {
+    height: 5px; background: var(--border); border-radius: 99px; overflow: hidden;
+    flex: 1; min-width: 60px;
+  }
+  .cs-progress-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #16a34a, #22c55e);
+    transition: width .4s ease;
+  }
+
+  /* ── 빈 상태 ── */
+  .cs-empty {
+    padding: 56px 24px;
+    text-align: center;
+  }
+  .cs-empty-icon {
+    width: 56px; height: 56px;
+    margin: 0 auto 16px;
+    background: var(--surface-low);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim);
+  }
+  .lucide { width: 20px; height: 20px; stroke-width: 1.75; }
+  .lucide-lg { width: 28px; height: 28px; stroke-width: 1.5; }
+
+  /* ── spin 애니메이션 ── */
+  @keyframes cs-spin { to { transform: rotate(360deg); } }
+  .cs-spin { animation: cs-spin 1s linear infinite; display: inline-block; }
+
+  input:not([type=range]):not([type=checkbox]):focus,
+  select:focus { outline: none; border-color: var(--primary) !important; box-shadow: 0 0 0 2px var(--primary-soft) !important; }
+  :root { --dyb-dd-accent: var(--primary); }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     Dark mode — 시맨틱 색(badge, done/pending accent, 프로그레스) 만 override.
+     중립 색은 위에서 var(...) 로 토큰화했으므로 자동 전환됨.
+     ═══════════════════════════════════════════════════════════════════════ */
+  html[data-theme="dark"] .teacher-row.done {
+    border-color: rgba(34, 197, 94, .45);
+    background: linear-gradient(135deg, rgba(22, 163, 74, .12) 0%, rgba(22, 163, 74, .06) 100%);
+    box-shadow: 0 1px 3px rgba(34, 197, 94, .10);
+  }
+  html[data-theme="dark"] .teacher-row.done:hover {
+    border-color: rgba(34, 197, 94, .70);
+    box-shadow: 0 3px 10px rgba(34, 197, 94, .20);
+  }
+  html[data-theme="dark"] .teacher-row.done .cs-detail-panel {
+    background: rgba(22, 163, 74, .08);
+    border-top-color: rgba(34, 197, 94, .40);
+  }
+
+  html[data-theme="dark"] .badge-done {
+    background: rgba(22, 163, 74, .15); color: #86efac; border-color: rgba(34, 197, 94, .35);
+  }
+  html[data-theme="dark"] .badge-pending {
+    background: rgba(217, 119, 6, .15); color: #fde047; border-color: rgba(217, 119, 6, .35);
+  }
+
+  html[data-theme="dark"] .badge-type-position {
+    background: rgba(37, 99, 235, .15); color: #93c5fd; border-color: rgba(37, 99, 235, .35);
+  }
+  html[data-theme="dark"] .badge-type-tl {
+    background: rgba(109, 40, 217, .18); color: #c4b5fd; border-color: rgba(109, 40, 217, .40);
+  }
+  html[data-theme="dark"] .badge-type-sub {
+    background: rgba(180, 83, 9, .18); color: #fde68a; border-color: rgba(180, 83, 9, .40);
+  }
+  html[data-theme="dark"] .badge-type-stl {
+    background: rgba(190, 24, 93, .18); color: #fbcfe8; border-color: rgba(190, 24, 93, .40);
+  }
+
+  html[data-theme="dark"] .overall-status.done   { color: #86efac; }
+  html[data-theme="dark"] .overall-status.pending { color: #fde047; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cs-page max-w-5xl mx-auto">
+
+  <!-- 헤더 -->
+  <div class="mb-6">
+    <h1 class="text-xl font-bold" style="color:var(--text-strong)">Campus Eval Status</h1>
+      <p class="text-sm mt-0.5" style="color:var(--text-muted)">
+        Submission status for evaluatees in your campus. Scores and comments are not shown.
+      </p>
+  </div>
+
+  {% if not my_campus %}
+    <div class="cs-card">
+      <div class="cs-empty">
+        <div class="cs-empty-icon">
+          <i class="bi bi-buildings lucide-lg"></i>
+        </div>
+        <p class="font-bold text-lg" style="color:var(--text-strong)">Campus not assigned</p>
+        <p class="mt-2 text-sm" style="color:var(--text-muted)">
+          Your account does not have a campus assignment.<br>Please contact admin.
+        </p>
+        <a href="mailto:noreply@example.com"
+           class="inline-flex items-center gap-2 mt-4 text-sm font-semibold"
+           style="color:var(--primary)">
+          <i data-lucide="mail" style="width:15px;height:15px"></i>
+          noreply@example.com
+        </a>
+      </div>
+    </div>
+  {% else %}
+    <!-- 필터 바 -->
+    <div class="cs-card" style="padding:12px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;overflow:visible;position:relative;z-index:50">
+      <i class="bi bi-sliders" style="width:16px;height:16px;color:var(--text-muted);flex-shrink:0"></i>
+      <label class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">Session</label>
+      <select id="cs_sessionSelect" class="dyb-select dyb-dd-lg" style="min-width:200px"></select>
+      <label class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">Type</label>
+      <select id="cs_typeSelect" class="dyb-select dyb-dd-lg">
+        <option value="">All Types</option>
+        {% for code, label in eval_types.items() %}
+        <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <div class="ml-auto flex items-center gap-2">
+        <i data-lucide="map-pin" style="width:14px;height:14px;color:var(--primary)"></i>
+        <span class="text-xs font-bold" style="color:var(--primary)" id="cs_campusLabel">{{ my_campus }}</span>
+      </div>
+    </div>
+
+    <div id="cs_container">
+      <div class="cs-card">
+        <div class="cs-empty">
+          <div class="cs-empty-icon">
+            <span class="cs-spin">
+              <i class="bi bi-arrow-clockwise lucide-lg"></i>
+            </span>
+          </div>
+          <p class="text-sm" style="color:var(--text-muted)">Loading...</p>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{% if my_campus %}
+<script src="{{ url_for('static', filename='js/eval_v2/campus_constants.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/campus_status.js') }}"></script>
+{% endif %}
+{# Lucide 초기 createIcons 는 layout.html 에서 DOMContentLoaded 에 자동 호출됨.
+   동적 DOM 삽입도 MutationObserver 가 처리하므로 수동 호출 불필요. #}
+{% endblock %}

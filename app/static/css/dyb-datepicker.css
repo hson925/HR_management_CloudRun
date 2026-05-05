@@ -1,0 +1,126 @@
+/* ── DYB Custom Datepicker ── */
+.dp-wrap { position: relative; display: inline-block; }
+
+.dp-input-box {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px; border-radius: 8px; font-size: .82rem; font-weight: 500;
+  border: 1.5px solid var(--outline); background: var(--surface-lowest); color: var(--text);
+  cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  user-select: none; min-width: 150px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.10);
+}
+.dp-input-box:hover { border-color: var(--text-muted); color: var(--text-strong); }
+.dp-input-box.open  { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(176,17,22,.10); }
+.dp-input-box .dp-icon  { color: var(--primary); font-size: .85rem; flex-shrink: 0; }
+.dp-input-box .dp-label { flex: 1; color: var(--text); white-space: nowrap; }
+.dp-input-box .dp-label.placeholder { color: var(--text-dim); }
+.dp-input-box .dp-caret { font-size: .65rem; color: var(--text-dim); transition: transform .2s; flex-shrink: 0; }
+.dp-input-box.open .dp-caret { transform: rotate(180deg); }
+
+.dp-popup {
+  position: fixed; z-index: 9999;
+  background: var(--surface); border: 2px solid var(--primary); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(176,17,22,.15), 0 4px 10px rgba(176,17,22,.10);
+  padding: 14px; width: 264px;
+  animation: dpFadeIn .12s ease;
+  color: var(--text);
+}
+@keyframes dpFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Calendar header */
+.dp-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.dp-nav-btn {
+  width: 28px; height: 28px; border-radius: 6px; border: none; background: none;
+  cursor: pointer; color: var(--text-muted); font-size: .8rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s, color .12s; flex-shrink: 0;
+}
+.dp-nav-btn:hover { background: var(--primary-soft); color: var(--primary); }
+.dp-month-label {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: .85rem; font-weight: 700; color: var(--text-strong);
+  cursor: pointer; padding: 2px 6px; border-radius: 6px;
+  transition: background .1s; user-select: none;
+}
+.dp-month-label:hover { background: var(--primary-soft); color: var(--primary); }
+.dp-month-label .dp-sel-caret { font-size: .6rem; color: var(--text-dim); transition: transform .2s; }
+.dp-month-label.sel-open .dp-sel-caret { transform: rotate(180deg); color: var(--primary); }
+
+/* Day grid */
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-weekday {
+  text-align: center; font-size: .68rem; font-weight: 700;
+  color: var(--text-dim); padding: 4px 0; letter-spacing: .03em;
+}
+.dp-day {
+  position: relative; text-align: center; font-size: .78rem;
+  padding: 5px 2px; border-radius: 6px; cursor: pointer;
+  color: var(--text); transition: background .1s, color .1s; line-height: 1.6;
+}
+.dp-day:hover:not(.dp-empty):not(.dp-selected) { background: var(--surface-low-hover); }
+.dp-day.dp-empty { cursor: default; }
+.dp-day.dp-today:not(.dp-selected)::after {
+  content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: var(--primary);
+}
+.dp-day.dp-selected { background: var(--primary); color: #fff; border-radius: 6px; font-weight: 700; }
+.dp-day.dp-selected:hover { background: var(--primary-hover); }
+
+/* Footer */
+.dp-footer {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-soft);
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+}
+.dp-today-btn {
+  padding: 5px 10px; border-radius: 6px; font-size: .73rem; font-weight: 700;
+  border: 1.5px solid var(--primary); background: var(--primary-soft); color: var(--primary);
+  cursor: pointer; transition: all .12s; display: flex; align-items: center; gap: 4px;
+}
+.dp-today-btn:hover { background: var(--primary); color: #fff; }
+.dp-clear-btn {
+  padding: 5px 12px; border-radius: 6px; font-size: .75rem; font-weight: 600;
+  border: 1px solid var(--outline); background: var(--surface-lowest); color: var(--on-surface-variant);
+  cursor: pointer; transition: all .12s;
+}
+.dp-clear-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Selector view */
+.dp-sel-view { display: none; }
+.dp-sel-view.active { display: block; }
+.dp-sel-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+}
+.dp-sel-title { font-size: .78rem; font-weight: 700; color: var(--on-surface-variant); }
+.dp-year-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 10px;
+}
+.dp-year-cell {
+  padding: 7px 2px; text-align: center; font-size: .78rem; font-weight: 500;
+  border-radius: 6px; cursor: pointer; color: var(--text); transition: background .1s, color .1s;
+}
+.dp-year-cell:hover { background: var(--surface-low-hover); color: var(--text-strong); }
+.dp-year-cell.dp-this-year { color: var(--primary); font-weight: 700; }
+.dp-year-cell.dp-sel-active { background: var(--primary); color: #fff; font-weight: 700; }
+.dp-sel-divider { height: 1px; background: var(--border-soft); margin: 8px 0; }
+.dp-month-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.dp-month-cell {
+  padding: 7px 2px; text-align: center; font-size: .75rem; font-weight: 500;
+  border-radius: 6px; cursor: pointer; color: var(--text); transition: background .1s, color .1s;
+}
+.dp-month-cell:hover { background: var(--surface-low-hover); color: var(--text-strong); }
+.dp-month-cell.dp-sel-active { background: var(--primary); color: #fff; font-weight: 700; }
+.dp-sel-footer {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-soft);
+  display: flex; justify-content: flex-end;
+}
+.dp-back-btn {
+  padding: 5px 12px; border-radius: 6px; font-size: .75rem; font-weight: 600;
+  border: 1px solid var(--outline); background: var(--surface-lowest); color: var(--on-surface-variant);
+  cursor: pointer; transition: all .12s; display: flex; align-items: center; gap: 4px;
+}
+.dp-back-btn:hover { border-color: var(--primary); color: var(--primary); }

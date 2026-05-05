@@ -1,0 +1,2340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DYB NHR Portal{% endblock %}</title>
+
+  <!-- 첫 페인트 전 FOUC 방지: 테마 복원 + 사이드바 접힘 상태 적용 + legacy key 마이그레이션 -->
+  <script>
+    (function(){
+      // localStorage key 마이그레이션 (1회): sidebarCollapsed → dyb-sidebar-collapsed
+      var legacy = localStorage.getItem('sidebarCollapsed');
+      if (legacy !== null && localStorage.getItem('dyb-sidebar-collapsed') === null) {
+        localStorage.setItem('dyb-sidebar-collapsed', legacy);
+        localStorage.removeItem('sidebarCollapsed');
+      }
+      // 테마 복원 (data-theme on <html>): 'dark' | 'light'
+      var theme = localStorage.getItem('dyb-theme');
+      if (theme === 'dark' || theme === 'light') {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      // 사이드바 접힘 상태 선제 적용
+      if (localStorage.getItem('dyb-sidebar-collapsed') === 'true') {
+        document.documentElement.classList.add('sb-pre-collapsed');
+      }
+    })();
+  </script>
+  <style>
+    /* ── 사이드바 접힘 상태 선제 스타일 (FOUC/jitter 방지) ──
+       초기 렌더 시 너비뿐 아니라 내부 콘텐츠까지 collapsed 상태로 그려지도록
+       pure CSS로 강제. JS의 DOMContentLoaded 클래스 스왑은 이후 토글을 위한
+       Tailwind 클래스 정합성 유지 목적으로만 동작. */
+    html.sb-pre-collapsed #sidebar      { width: 4.5rem !important; }   /* 72px (핸드오프) */
+    html.sb-pre-collapsed #main-wrapper { margin-left: 4.5rem !important; }
+
+    /* 초기 로드 시 사이드바 내부 모든 트랜지션 무력화 */
+    html.sb-pre-collapsed #sidebar,
+    html.sb-pre-collapsed #sidebar *,
+    html.sb-pre-collapsed #main-wrapper {
+      transition: none !important;
+    }
+
+    /* 접힘 상태에서 숨겨져야 하는 요소들 (Phase D 마크업 기준) */
+    html.sb-pre-collapsed #sidebar .nav-label,
+    html.sb-pre-collapsed #sidebar .nav-item-content,
+    html.sb-pre-collapsed #sidebar .nav-children-wrap,
+    html.sb-pre-collapsed #sidebar .nav-item .chevron,
+    html.sb-pre-collapsed #sidebar .nav-item .lock-tail,
+    html.sb-pre-collapsed #sidebar .sidebar-user {
+      display: none !important;
+    }
+
+    /* 접힘 상태 nav-item 정렬 — 아이콘만 가운데 */
+    html.sb-pre-collapsed #sidebar .nav-item {
+      justify-content: center !important;
+      gap: 0 !important;
+      padding: 10px 0 !important;
+    }
+
+    /* 접힘 상태 로고 clipPath (DYB 심볼만 노출) */
+    html.sb-pre-collapsed #sidebar .sidebar-head img {
+      width: 36px !important;
+      height: auto !important;
+      clip-path: inset(0 0 27% 0) !important;
+      margin-bottom: -8px !important;
+    }
+  </style>
+
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+
+  <!-- Typography: Pretendard (primary) + Inter (fallback) + JetBrains Mono (⌘K pills, labels) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dyb-table.css') }}">
+  <script defer src="{{ url_for('static', filename='js/dyb-paginate.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/common/api_error.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/common/progress_modal.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/common/bulk_runner.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/common/modal_icons.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/common/role_labels.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/common/theme-toggle.js') }}"></script>
+  
+  <style>
+    /* ── Body typography — Pretendard 우선, Inter fallback, 시스템 마지막 ── */
+    body {
+      font-family: 'Pretendard', 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+                   'Segoe UI', Roboto, sans-serif;
+    }
+
+    /* ── 사이드바·헤더 오프셋 CSS 변수 ── */
+    :root {
+      --sb-w: 13rem;       /* 사이드바 너비 — 208px (핸드오프). JS에서 접힘 시 4.5rem 로 갱신 */
+      --hdr-h: 3.75rem;    /* 상단바 높이 — 60px (핸드오프 스펙) */
+    }
+    /* ── 공통 모달 오버레이 ──
+       .dyb-modal-overlay 와 .modal-backdrop 은 동일 동작 (히스토리상 둘 다 사용됨).
+       사이드바(--sb-w) 와 상단바(--hdr-h) 를 제외한 콘텐츠 영역 중앙에 모달 배치.
+       사이드바 토글 시 --sb-w 가 갱신되므로 별도 JS 없이 자동 대응. */
+    .dyb-modal-overlay,
+    .modal-backdrop {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, .4);
+      backdrop-filter: blur(2px);
+      padding-top:    calc(var(--hdr-h) + 12px) !important;
+      padding-left:   calc(var(--sb-w)  + 12px) !important;
+      padding-right:  12px !important;
+      padding-bottom: 12px !important;
+    }
+    @media (max-width: 1023px) {   /* 모바일: 사이드바 오버레이 방식 */
+      .dyb-modal-overlay,
+      .modal-backdrop { padding: 12px !important; }
+    }
+
+    /* 모달 열림 시 배경 페이지 스크롤 차단 — body.modal-open 클래스는
+       layout.html `<script>` 의 MutationObserver 가 자동 토글. */
+    body.modal-open { overflow: hidden; }
+
+    /* ── 공통 드롭다운 (pill 형태) ──
+       기본: neutral gray. 페이지별로 `--dyb-dd-accent` 변수만 override 하여
+       active/selected 색을 바꿀 수 있음. 네이티브 <select> 와 커스텀
+       button-triggered 드롭다운 모두 동일 표면으로 통합. */
+    :root {
+      --dyb-dd-border: var(--border);
+      --dyb-dd-border-hover: var(--text-muted);
+      --dyb-dd-accent: var(--text-strong);
+    }
+    .dyb-select,
+    .dyb-dd-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 2px solid var(--dyb-dd-border);
+      border-radius: 9999px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      line-height: 1.3;
+      min-height: 32px;
+      padding: 6px 14px;
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+      transition: border-color .18s, background .18s, color .18s;
+    }
+    /* 네이티브 <select>: background-image 로 chevron (pseudo 사용 불가).
+       stroke 색은 currentColor 가 안 먹어서 light/dark 각각 고정. 다크 override 는
+       html[data-theme="dark"] .dyb-select 에 별도 SVG 지정. */
+    .dyb-select {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 32px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+    html[data-theme="dark"] .dyb-select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    }
+    /* 커스텀 트리거: 내부 <i class="bi bi-chevron-down"> 자동 회전 */
+    .dyb-dd-trigger > .bi-chevron-down {
+      margin-left: auto; font-size: .65rem; opacity: .55;
+      transition: transform .2s;
+    }
+    .dyb-dd-trigger.open > .bi-chevron-down { transform: rotate(180deg); }
+
+    .dyb-select:hover,
+    .dyb-dd-trigger:hover {
+      border-color: var(--dyb-dd-border-hover);
+      background: var(--surface-low);
+      color: var(--text-strong);
+    }
+    .dyb-select:focus { outline: none; border-color: var(--dyb-dd-accent); }
+    .dyb-dd-trigger.open,
+    .dyb-dd-trigger.has-value,
+    .dyb-select.has-value { border-color: var(--dyb-dd-accent); }
+
+    /* 사이즈 변형 */
+    .dyb-select.dyb-dd-sm,
+    .dyb-dd-trigger.dyb-dd-sm {
+      padding: 4px 12px; font-size: 11px; min-height: 28px;
+    }
+    .dyb-select.dyb-dd-sm { padding-right: 28px; }
+    .dyb-select.dyb-dd-lg,
+    .dyb-dd-trigger.dyb-dd-lg {
+      padding: 8px 16px; font-size: 13px; min-height: 40px;
+    }
+    .dyb-select.dyb-dd-lg { padding-right: 36px; }
+
+    /* 커스텀 드롭다운 메뉴 (button-triggered popover)
+       — NT Dashboard 스타일의 overshoot easing 으로 부드럽게 등장 */
+    .dyb-dd-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 500;
+      background: var(--surface);
+      border: 2px solid var(--dyb-dd-border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-md);
+      min-width: 100%;
+      padding: 4px;
+      opacity: 0;
+      transform: translateY(-6px) scale(.97);
+      transform-origin: top center;
+      pointer-events: none;
+      transition:
+        opacity .18s cubic-bezier(.22, .68, 0, 1.2),
+        transform .18s cubic-bezier(.22, .68, 0, 1.2);
+    }
+    .dyb-dd-menu.open {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+    .dyb-dd-menu.to-right { left: auto; right: 0; transform-origin: top right; }
+
+    /* 각 option 의 subtle stagger fade-in (.open 토글 시마다 재생) */
+    .dyb-dd-menu.open .dyb-dd-option {
+      animation: dybDdOptionIn .22s cubic-bezier(.22, .68, 0, 1.2) both;
+    }
+    .dyb-dd-menu.open .dyb-dd-option:nth-child(1) { animation-delay: .02s; }
+    .dyb-dd-menu.open .dyb-dd-option:nth-child(2) { animation-delay: .04s; }
+    .dyb-dd-menu.open .dyb-dd-option:nth-child(3) { animation-delay: .06s; }
+    .dyb-dd-menu.open .dyb-dd-option:nth-child(4) { animation-delay: .08s; }
+    .dyb-dd-menu.open .dyb-dd-option:nth-child(5) { animation-delay: .10s; }
+    .dyb-dd-menu.open .dyb-dd-option:nth-child(n+6) { animation-delay: .12s; }
+    @keyframes dybDdOptionIn {
+      from { opacity: 0; transform: translateY(-3px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 항목이 많은 메뉴 — 3열 그리드 (캠퍼스 등) */
+    .dyb-dd-menu.dyb-dd-cols-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      min-width: 300px;
+    }
+    .dyb-dd-menu.dyb-dd-cols-3 .dyb-dd-option {
+      justify-content: center;
+      text-align: center;
+      padding: 6px 8px;
+      font-size: 11px;
+      border-radius: 8px;
+    }
+
+    .dyb-dd-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 8px;
+      white-space: nowrap;
+      transition: background .12s, color .12s;
+    }
+    .dyb-dd-option:hover { background: var(--primary); color: #fff; }
+    .dyb-dd-option:hover .bi,
+    .dyb-dd-option:hover i { color: #fff !important; }
+    .dyb-dd-option.selected { background: var(--primary-soft); color: var(--dyb-dd-accent); font-weight: 800; }
+    .dyb-dd-option.selected:hover { background: var(--primary); color: #fff; }
+
+    /* locked 상태 (fixed campus 등) — teal semantic accent, 다크에서 색조 조정 */
+    .dyb-dd-trigger.locked {
+      cursor: not-allowed; opacity: .85; border-color: #0d9488 !important; background: #f0fdfa !important;
+    }
+    html[data-theme="dark"] .dyb-dd-trigger.locked {
+      border-color: rgba(13, 148, 136, .60) !important;
+      background: rgba(13, 148, 136, .12) !important;
+      color: #5eead4 !important;
+    }
+    .dyb-dd-trigger.locked > .bi-chevron-down { display: none; }
+
+    /* ── 글로벌 body 다크 텍스트 (Tailwind text-gray-900 override) ──
+       모든 페이지의 body 가 Tailwind .text-gray-900 (#111114) 을 갖고 있어
+       콘텐츠 컨테이너 (Quill .ql-editor, 일반 div 등) 가 explicit color 를
+       설정 안 하면 #111114 검은 글자를 상속받아 다크에서 안 보임.
+       Tailwind .text-gray-900 (specificity 0,1,0) 를 이기려면 !important 또는
+       동급 specificity. body.text-gray-900 (0,1,1) 로 specificity 한 단계 ↑. */
+    html[data-theme="dark"] body.text-gray-900 { color: var(--text) !important; }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 0px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--outline-variant); border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--outline); }
+
+    /* ── Notification 카드 (#notif-bell 드롭다운 안의 동적 렌더 항목) ── */
+    .notif-item.notif-unread { background: var(--primary-soft); }
+    .notif-item.notif-read   { background: transparent; }
+    .notif-item.notif-unread:hover { background: rgba(176,17,22,.14); }
+    .notif-item.notif-read:hover   { background: var(--surface-low); }
+
+    /* ── ToS 동적 렌더 (_htmlFromArticles) — 시맨틱 amber 배지 다크 적응 ── */
+    .tos-fallback-badge { background: #fefce8; border: 1px solid #fde68a; color: #92400e; }
+    .tos-ko-badge       { background: #fef3c7; color: #92400e; }
+    html[data-theme="dark"] .tos-fallback-badge { background: rgba(217,119,6,.18); border-color: rgba(217,119,6,.40); color: #fcd34d; }
+    html[data-theme="dark"] .tos-ko-badge       { background: rgba(217,119,6,.18); color: #fcd34d; }
+
+    /* 사이드바 스크롤이 메인 콘텐츠로 전파되는 현상 차단 */
+    #sidebar-nav { overscroll-behavior: contain; }
+
+    /* ── Collapsed sidebar flyout submenu (Phase D 기준 token-based) ── */
+    .is-flyout {
+      position: fixed !important;
+      left: calc(4.5rem + 4px) !important;   /* 접힘 폭 72px + primary border + 2px gap */
+      display: grid !important;               /* grid-template-rows 무력화 → 바로 보임 */
+      grid-template-rows: 1fr !important;
+      background: var(--surface-chrome) !important;
+      border: 1px solid var(--border) !important;
+      border-left: 3px solid var(--primary) !important;
+      border-radius: 0 10px 10px 0 !important;
+      min-width: 200px !important;
+      box-shadow: var(--shadow-md) !important;
+      z-index: 500 !important;
+      margin: 0 !important;
+      padding: 8px !important;
+    }
+    .is-flyout .nav-children-inner { overflow: visible !important; }
+    .is-flyout .nav-children { margin-left: 0 !important; padding-left: 0 !important; border-left: none !important; }
+    /* Flyout 헤더 (data-flyout-label 속성 사용) */
+    .is-flyout[data-flyout-label]::before {
+      content: attr(data-flyout-label);
+      display: block;
+      font-size: .6rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding: 2px 10px 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 6px;
+    }
+
+    /* ── 상단 헤더 드롭다운(알림·프로필) 부드러운 열기/닫기 ──
+       기존엔 display:none ↔ block 즉시 전환이어서 끊겨 보였음. CSS 트랜지션으로 전환.
+       닫힘 상태: opacity 0 + translateY(-8px) scaleY(.96) + pointer-events:none
+       열림 상태: .open 클래스 → 원래 크기·불투명도로 복귀 */
+    #notif-dropdown,
+    #profile-dropdown {
+      opacity: 0;
+      transform: translateY(-8px) scaleY(.96);
+      transform-origin: top right;
+      pointer-events: none;
+      transition:
+        opacity .18s ease-out,
+        transform .24s cubic-bezier(.22, 1, .36, 1);
+      will-change: transform, opacity;
+    }
+    #notif-dropdown.open,
+    #profile-dropdown.open {
+      opacity: 1;
+      transform: translateY(0) scaleY(1);
+      pointer-events: auto;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       Header (Phase C — Claude design handoff)
+       60px 높이, 하단 2px primary border, token-based.
+       보존: #notif-bell / #notif-dropdown / #profile-btn / #profile-dropdown
+             마크업·ID·기존 JS 로직 (라인 1100+ 영역).
+       ════════════════════════════════════════════════════════════════════════ */
+    .app-header {
+      height: var(--hdr-h);
+      background: var(--surface-chrome);
+      border-bottom: 2px solid var(--chrome-frame);
+      box-shadow: var(--chrome-shadow-bottom);
+      padding: 0 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      color: var(--text-on-chrome);
+      transition: background .15s, border-color .15s, box-shadow .15s;
+      flex-shrink: 0;
+    }
+    .header-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-on-chrome);
+      letter-spacing: -.01em;
+      line-height: 1.2;
+    }
+    .header-sub {
+      font-size: 11px;
+      color: var(--text-on-chrome-muted);
+      margin-top: 2px;
+      line-height: 1;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 10px; }
+    .hdr-title-block { display: flex; flex-direction: column; min-width: 0; }
+
+    /* 검색 바 (stub) — chrome 위에서 살짝 흰빛 반투명 */
+    .hdr-search {
+      flex: 1; max-width: 420px; margin: 0 24px;
+      display: flex; align-items: center; gap: 10px;
+      background: var(--chrome-hover);
+      border: 1px solid var(--chrome-border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text-on-chrome-muted);
+      font-size: 12.5px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color .15s, background .15s;
+    }
+    .hdr-search:hover { border-color: var(--text-on-chrome-dim); background: var(--chrome-active); }
+    .hdr-search > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+    .hdr-kbd {
+      background: var(--chrome-active);
+      border: 1px solid var(--chrome-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-on-chrome-muted);
+      flex-shrink: 0;
+    }
+
+    /* 우측 클러스터 */
+    .hdr-actions { display: flex; align-items: center; gap: 4px; }
+
+    /* 36×36 아이콘 버튼 */
+    .hdr-icon-btn {
+      position: relative;
+      background: transparent; border: none;
+      color: var(--text-on-chrome-muted);
+      width: 36px; height: 36px;
+      border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s, color .15s;
+      font-family: inherit;
+    }
+    .hdr-icon-btn:hover { background: var(--chrome-hover); color: var(--text-on-chrome); }
+    .hdr-icon-btn > i { font-size: 17px; }
+
+    /* 언어 토글 (커스텀 pill) */
+    .hdr-lang-btn {
+      background: transparent;
+      border: 1px solid var(--chrome-border);
+      color: var(--text-on-chrome);
+      padding: 6px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: .04em;
+      margin: 0 2px;
+      font-family: inherit;
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .hdr-lang-btn:hover { background: var(--chrome-hover); color: var(--text-on-chrome); border-color: var(--text-on-chrome-dim); }
+
+    /* 알림 벨 배지 — 라이트는 dark accent + 흰 텍스트, 다크는 흰 dot + chrome 색 텍스트 */
+    .hdr-badge-dot {
+      position: absolute;
+      top: 4px; right: 4px;
+      min-width: 15px; height: 15px;
+      border-radius: 99px;
+      background: var(--accent-gold);
+      color: var(--badge-dot-text, var(--surface-chrome));
+      font-size: 9px; font-weight: 800;
+      line-height: 1;
+      padding: 0 3px;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--surface-chrome);
+    }
+
+    /* 세로 구분선 */
+    .hdr-divider {
+      width: 1px; height: 22px;
+      background: var(--chrome-border);
+      margin: 0 8px;
+      flex-shrink: 0;
+    }
+
+    /* 유저 칩 */
+    .hdr-user-chip {
+      display: flex; align-items: center; gap: 9px;
+      padding: 4px 10px 4px 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      color: var(--text-on-chrome);
+      transition: background .15s;
+      font-family: inherit;
+    }
+    .hdr-user-chip:hover { background: var(--chrome-hover); }
+    .hdr-user-avatar {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: #ffffff;
+      color: var(--surface-chrome);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 12px;
+      flex-shrink: 0;
+    }
+    .hdr-user-info {
+      line-height: 1.2;
+      display: flex; flex-direction: column; align-items: flex-start;
+    }
+    .hdr-user-name {
+      font-size: 12px; font-weight: 700;
+      color: var(--text-on-chrome);
+    }
+    .hdr-user-role {
+      font-size: 9.5px; font-weight: 700;
+      color: var(--text-on-chrome-muted);
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .hdr-user-chip > i.chevron {
+      font-size: 12px; color: var(--text-on-chrome-muted);
+      margin-left: 2px;
+    }
+
+    /* 모바일 햄버거 토글 */
+    .hdr-mobile-toggle {
+      display: none;
+      background: transparent; border: none;
+      color: var(--text-on-chrome-muted);
+      padding: 8px; margin-left: -8px;
+      border-radius: 8px; cursor: pointer;
+      transition: background .15s, color .15s;
+      font-family: inherit;
+    }
+    .hdr-mobile-toggle:hover { background: var(--chrome-hover); color: var(--text-on-chrome); }
+    .hdr-mobile-toggle > i { font-size: 22px; }
+    @media (max-width: 1023px) {
+      .hdr-mobile-toggle { display: flex; align-items: center; justify-content: center; }
+      .hdr-search { display: none; }
+      .header-sub { display: none; }
+      .hdr-user-info { display: none; }
+      .hdr-divider { margin: 0 4px; }
+      .app-header { padding: 0 16px; }
+    }
+
+    /* 로그아웃 상태 Login 버튼 (primary pill) */
+    .hdr-login-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 16px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      border-radius: 10px;
+      border: none; cursor: pointer;
+      box-shadow: 0 4px 10px rgba(176, 17, 22, .25);
+      transition: background .2s;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .hdr-login-btn:hover { background: var(--primary-hover); }
+
+    /* 기존 알림·프로필 dropdown 외곽 색상은 테마 토큰으로 override (내부 마크업은 기존 유지).
+       헤더/사이드바와 브랜드 프레임을 통일하기 위해 테두리는 primary red 1px. */
+    #notif-dropdown,
+    #profile-dropdown {
+      background: var(--surface) !important;
+      border: 1px solid var(--primary) !important;
+      box-shadow: var(--shadow-md) !important;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       Sidebar (Phase D — Claude design handoff)
+       208px 펼침 / 72px 접힘. 우측 2px primary red border. token-based.
+       보존: role-based 조건 (admin_code / admin_auth), active 판정 (request.path),
+             flyout submenu (#is-flyout), mobile overlay (#mobile-overlay),
+             기존 id (#sidebar, #sidebar-nav, #sidebar-header).
+       ════════════════════════════════════════════════════════════════════════ */
+
+    /* Brand-color 강제 override — 페이지별 :root 가 --primary 를 다른 값으로
+       (admin/sub_assignment/annual_eval/users = #870009, 일부 = #B01116)
+       재정의해 사이드바·헤더의 active 배경·border 가 페이지마다 달라 보이는
+       문제 해결. `html #sidebar` = specificity 0,1,1 > 페이지 :root 0,1,0
+       → tokens.css 브랜드 값 (#B01116) 이 항상 승리.
+       --primary-soft / --primary-container 는 light/dark theme 변주가 있어
+       여기서 override 하지 않음 — 그대로 tokens.css 가 관리. */
+    html #sidebar.sidebar,
+    html .app-header {
+      --primary: #B01116;
+      --primary-hover: #c41118;
+    }
+
+    #sidebar.sidebar {
+      position: fixed; left: 0; top: 0;
+      height: 100vh;
+      width: var(--sb-w);
+      background: var(--surface-chrome);
+      color: var(--text);
+      border-right: 2px solid var(--chrome-frame);
+      box-shadow: var(--chrome-shadow-side);
+      display: flex; flex-direction: column;
+      z-index: 50;
+      transition: width .25s ease, transform .3s ease, box-shadow .15s;
+      font-size: 13px;
+    }
+    @media (max-width: 1023px) {
+      #sidebar.sidebar {
+        transform: translateX(-100%);
+      }
+      #sidebar.sidebar.mobile-open {
+        transform: translateX(0);
+      }
+    }
+
+    /* Main wrapper 위치 — 사이드바 폭 기준 자동 오프셋 */
+    @media (min-width: 1024px) {
+      #main-wrapper {
+        margin-left: var(--sb-w);
+        transition: margin-left .25s ease;
+      }
+    }
+
+    /* Sidebar head (로고) — 라이트는 흰 panel (DYB red 로고 가시성 ↑), 다크는 chrome 그대로 */
+    .sidebar-head {
+      padding: 18px 20px;
+      background: var(--logo-panel-bg);
+      border-bottom: 1px solid var(--chrome-border);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .sidebar-head img {
+      height: 40px; width: auto; display: block;
+      transition: width .25s, height .25s, clip-path .25s, margin .25s;
+    }
+    /* 라이트 panel (chrome=red) → logo-white.png (.logo-light 슬롯에 매핑)
+       다크  panel (chrome=slate blue) → logo-dark.png (.logo-dark 슬롯) */
+    .sidebar-head .logo-light { display: block; }
+    .sidebar-head .logo-dark  { display: none; }
+    html[data-theme="dark"] .sidebar-head .logo-light { display: none; }
+    html[data-theme="dark"] .sidebar-head .logo-dark  { display: block; }
+
+    /* 토글 pill 버튼 — 우측 edge 중앙 */
+    .sidebar-toggle-pill {
+      position: absolute;
+      top: 50%; right: -11px;
+      transform: translateY(-50%);
+      width: 22px; height: 44px;
+      border-radius: 6px;
+      background: #ffffff;
+      border: 2px solid var(--primary);
+      color: var(--primary);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 5;
+      box-shadow: var(--shadow-md);
+      transition: background .15s, color .15s;
+      font-family: inherit;
+    }
+    .sidebar-toggle-pill:hover { background: var(--primary); color: #fff; }
+    .sidebar-toggle-pill > i { font-size: 14px; }
+    /* 모바일에선 desktop toggle pill 숨김 */
+    @media (max-width: 1023px) {
+      .sidebar-toggle-pill { display: none; }
+    }
+
+    /* Body (스크롤 영역) */
+    .sidebar-body {
+      flex: 1;
+      overflow-y: auto; overflow-x: visible;
+      padding: 14px 12px;
+      overscroll-behavior: contain;
+    }
+
+    /* Section label (MAIN / REQUIRES LOGIN) */
+    .nav-label {
+      font-size: 9.5px; font-weight: 800; letter-spacing: .12em;
+      color: var(--text-on-chrome-dim);
+      padding: 8px 10px 6px;
+      text-transform: uppercase;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .nav-label > i { font-size: 10px; }
+
+    /* Nav item */
+    .nav-item {
+      display: flex; align-items: center; gap: 11px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--text-on-chrome);
+      margin-bottom: 2px;
+      transition: background .15s, color .15s;
+      text-decoration: none;
+      position: relative;
+      background: transparent;
+      border: none;
+      width: 100%;
+      font-family: inherit;
+      text-align: left;
+      line-height: inherit;
+    }
+    .nav-item:hover { background: var(--chrome-hover); }
+    /* Active state: 음각 overlay (라이트=어두운, 다크=밝은) + 좌측 골드/흰 악센트바.
+       라이트 = academic crimson + gold 클래식 조합, 다크 = 기존 흰색 accent. */
+    .nav-item.active {
+      background: var(--chrome-active);
+      color: var(--text-on-chrome);
+      box-shadow: inset 3px 0 0 0 var(--accent-gold);
+    }
+    .nav-item.active .nav-sub { opacity: .75; }
+    .nav-item > i.nav-icon { font-size: 17px; flex-shrink: 0; }
+    .nav-item-content {
+      flex: 1; display: flex; flex-direction: column;
+      line-height: 1.15; min-width: 0;
+    }
+    .nav-label-text {
+      font-size: 13px; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .nav-sub {
+      font-size: 10px; opacity: .65; margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .nav-item .chevron {
+      font-size: 13px; opacity: .7;
+      transition: transform .2s;
+      flex-shrink: 0;
+    }
+    .nav-item.expanded .chevron { transform: rotate(180deg); }
+
+    /* Nav children — grid-template-rows 아코디언 */
+    .nav-children-wrap {
+      display: grid; grid-template-rows: 0fr;
+      transition: grid-template-rows .25s ease;
+    }
+    .nav-children-wrap.expanded { grid-template-rows: 1fr; }
+    .nav-children-inner {
+      overflow: hidden; min-height: 0;
+    }
+    .nav-children {
+      margin-left: 12px;
+      padding-left: 10px;
+      padding-top: 4px; padding-bottom: 4px;
+      border-left: 1px solid var(--chrome-border);
+    }
+    .nav-child {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 10px; border-radius: 6px;
+      color: var(--text-on-chrome-muted); font-size: 12px; font-weight: 500;
+      cursor: pointer; text-decoration: none;
+      transition: background .15s, color .15s;
+    }
+    .nav-child:hover { background: var(--chrome-hover); color: var(--text-on-chrome); }
+    /* Active 자식: 음각 overlay + 좌측 골드/흰 악센트바 + 흰 텍스트 */
+    .nav-child.active {
+      background: var(--chrome-active);
+      color: var(--text-on-chrome); font-weight: 700;
+      box-shadow: inset 3px 0 0 0 var(--accent-gold);
+    }
+    .nav-child > i { font-size: 13px; flex-shrink: 0; }
+
+    /* Locked item */
+    .nav-locked { color: var(--text-on-chrome-muted); cursor: pointer; }
+    .nav-locked:hover { color: var(--text-on-chrome); background: var(--chrome-hover); }
+    .nav-item > i.lock-tail {
+      font-size: 11px; color: var(--text-on-chrome-muted);
+      margin-left: auto;
+    }
+
+    /* REQUIRES LOGIN 섹션 라벨 — 클릭 가능한 접기·펼치기 헤더 */
+    .nav-label.nav-label-clickable {
+      cursor: pointer;
+      user-select: none;
+      transition: color .15s;
+      border-radius: 6px;
+    }
+    .nav-label.nav-label-clickable:hover { color: var(--text-on-chrome-muted); background: var(--chrome-hover); }
+    .nav-label.nav-label-clickable .chevron {
+      margin-left: auto; font-size: 10px;
+      transition: transform .2s;
+    }
+    .nav-label.nav-label-clickable.expanded .chevron { transform: rotate(180deg); }
+
+    /* Sidebar user footer */
+    .sidebar-user {
+      border-top: 1px solid var(--chrome-border);
+      padding: 14px;
+      display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0;
+    }
+    .sidebar-user-avatar {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: #ffffff; color: var(--surface-chrome);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px;
+      flex-shrink: 0;
+    }
+    .sidebar-user-info {
+      flex: 1; min-width: 0;
+      line-height: 1.2;
+      display: flex; flex-direction: column; align-items: flex-start;
+    }
+    .sidebar-user-name {
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-on-chrome);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      max-width: 100%;
+    }
+    .sidebar-user-role {
+      font-size: 10px; font-weight: 700;
+      color: var(--text-on-chrome-muted);
+      letter-spacing: .05em; text-transform: uppercase;
+      margin-top: 1px;
+    }
+    .sidebar-user .chevron-updown {
+      font-size: 14px; color: var(--text-on-chrome-muted);
+      flex-shrink: 0;
+    }
+
+    /* 접힘 상태 — .is-collapsed (JS 토글 시) */
+    #sidebar.is-collapsed { width: 4.5rem; }
+    #sidebar.is-collapsed .nav-label,
+    #sidebar.is-collapsed .nav-item-content,
+    #sidebar.is-collapsed .nav-children-wrap,
+    #sidebar.is-collapsed .nav-item .chevron,
+    #sidebar.is-collapsed .nav-item .lock-tail,
+    #sidebar.is-collapsed .sidebar-user {
+      display: none;
+    }
+    #sidebar.is-collapsed .nav-item {
+      justify-content: center;
+      gap: 0;
+      padding: 10px 0;
+    }
+    #sidebar.is-collapsed .sidebar-head img {
+      width: 36px; height: auto;
+      clip-path: inset(0 0 27% 0);
+      margin-bottom: -8px;
+    }
+  </style>
+  
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-gray-900 selection:bg-dybred selection:text-white overflow-x-hidden">
+
+  <div id="mobile-overlay" class="fixed inset-0 bg-black/50 z-20 hidden lg:hidden transition-opacity duration-300" onclick="toggleSidebar()"></div>
+
+  <aside id="sidebar" class="sidebar">
+
+    <!-- Desktop toggle pill (우측 edge 중앙) -->
+    <button type="button" onclick="toggleDesktopSidebar()" class="sidebar-toggle-pill" id="sidebarTogglePill" aria-label="사이드바 접기">
+      <i id="toggle-icon" class="bi bi-chevron-left"></i>
+    </button>
+
+    <!-- Logo head -->
+    <div id="sidebar-header" class="sidebar-head">
+      <a href="/" id="logo-container" aria-label="Home">
+        <img class="logo-light" src="{{ url_for('static', filename='logo-white.png') }}" alt="DYB">
+        <img class="logo-dark"  src="{{ url_for('static', filename='logo-dark.png') }}" alt="DYB">
+      </a>
+    </div>
+    
+    {# ── Sidebar body (nav) ──────────────────────────────────────────────
+       Role-based 조건 (admin_code / admin_auth) + active 판정 (request.path)
+       전수 보존. 아이콘은 handoff "Icon name map" 참고 (bi-grid-1x2 등).
+       Flyout submenu 는 기존 data-flyout-label + id 유지 — collapsed 상태에서
+       _openFlyout 이 사용. Accordion 은 grid-template-rows 트릭 (nav-children-wrap).
+       ──────────────────────────────────────────────────────────────────── #}
+    <div id="sidebar-nav" class="sidebar-body custom-scrollbar">
+      <div class="nav-label">MAIN</div>
+
+      {# Dashboard (link, no children) #}
+      <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+        <i class="bi bi-grid-1x2 nav-icon"></i>
+        <div class="nav-item-content">
+          <span class="nav-label-text">Dashboard</span>
+          <span class="nav-sub">대시보드</span>
+        </div>
+      </a>
+
+      {% if session.get('admin_code') in ('admin', 'MASTER') %}
+      {# Evaluation (admin) — 6 children #}
+      <div>
+        <button type="button" onclick="dybToggleNav('eval')" id="btn-evalv2-menu"
+          class="nav-item {% if request.path.startswith('/eval-v2') %}active expanded{% endif %}">
+          <i class="bi bi-clipboard2-check nav-icon"></i>
+          <div class="nav-item-content">
+            <span class="nav-label-text">Evaluation</span>
+            <span class="nav-sub">평가</span>
+          </div>
+          <i class="bi bi-chevron-down chevron"></i>
+        </button>
+        <div class="nav-children-wrap {% if request.path.startswith('/eval-v2') %}expanded{% endif %}"
+             id="evalv2-submenu" data-nav-group="eval" data-flyout-label="Evaluation">
+          <div class="nav-children-inner">
+            <div class="nav-children">
+              <a href="/eval-v2/status" class="nav-child {% if request.path == '/eval-v2/status' %}active{% endif %}">
+                <i class="bi bi-bar-chart"></i><span>Status</span>
+              </a>
+              <a href="/eval-v2/admin" class="nav-child {% if request.path == '/eval-v2/admin' %}active{% endif %}">
+                <i class="bi bi-sliders"></i><span>Sessions / Settings</span>
+              </a>
+              <a href="/eval-v2/sub-assignment" class="nav-child {% if request.path == '/eval-v2/sub-assignment' %}active{% endif %}">
+                <i class="bi bi-diagram-3"></i><span>SUB CTL</span>
+              </a>
+              <a href="/eval-v2/annual-eval" class="nav-child {% if request.path == '/eval-v2/annual-eval' %}active{% endif %}">
+                <i class="bi bi-award"></i><span>Annual Eval</span>
+              </a>
+              <a href="/eval-v2/my-tasks" class="nav-child {% if request.path == '/eval-v2/my-tasks' %}active{% endif %}">
+                <i class="bi bi-clipboard2-check"></i><span>My Tasks</span>
+              </a>
+              <a href="/eval-v2/form" class="nav-child {% if request.path == '/eval-v2/form' or request.path == '/eval-v2/' %}active{% endif %}">
+                <i class="bi bi-pencil-square"></i><span>Evaluation Form</span>
+              </a>
+              <a href="/eval-v2/analysis" class="nav-child {% if request.path == '/eval-v2/analysis' %}active{% endif %}">
+                <i class="bi bi-file-earmark-text"></i><span>Analysis</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% elif session.get('admin_code') in ('GS', 'TL', 'STL') %}
+      {# Evaluation (GS/TL/STL) — Campus Status + My Tasks (+ legacy /eval) #}
+      <div>
+        <button type="button" onclick="dybToggleNav('eval')" id="btn-evalv2-menu"
+          class="nav-item {% if request.path.startswith('/eval-v2') or request.path == '/eval' %}active expanded{% endif %}">
+          <i class="bi bi-clipboard2-check nav-icon"></i>
+          <div class="nav-item-content">
+            <span class="nav-label-text">Evaluation</span>
+            <span class="nav-sub">평가</span>
+          </div>
+          <i class="bi bi-chevron-down chevron"></i>
+        </button>
+        <div class="nav-children-wrap {% if request.path.startswith('/eval-v2') or request.path == '/eval' %}expanded{% endif %}"
+             id="evalv2-submenu" data-nav-group="eval" data-flyout-label="Evaluation">
+          <div class="nav-children-inner">
+            <div class="nav-children">
+              <a href="/eval-v2/my-tasks" class="nav-child {% if request.path == '/eval-v2/my-tasks' %}active{% endif %}">
+                <i class="bi bi-clipboard2-check"></i><span>My Tasks</span>
+              </a>
+              <a href="/eval-v2/campus-status" class="nav-child {% if request.path == '/eval-v2/campus-status' %}active{% endif %}">
+                <i class="bi bi-bar-chart"></i><span>Campus Status</span>
+              </a>
+              <a href="/eval" class="nav-child {% if request.path == '/eval' %}active{% endif %}">
+                <i class="bi bi-pencil-square"></i><span>Evaluation Form</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      {# Evaluation (비-admin / 비로그인) — 직접 링크 #}
+      <a href="/eval" class="nav-item {% if request.path == '/eval' %}active{% endif %}">
+        <i class="bi bi-clipboard2-check nav-icon"></i>
+        <div class="nav-item-content">
+          <span class="nav-label-text">Evaluation</span>
+          <span class="nav-sub">평가</span>
+        </div>
+      </a>
+      {% endif %}
+
+      {% if session.get('admin_code') in ('admin', 'MASTER') %}
+      {# NET Status — 2 children #}
+      <div>
+        <button type="button" onclick="dybToggleNav('net')" id="btn-net-menu"
+          class="nav-item {% if request.path.startswith('/nt-') %}active expanded{% endif %}">
+          <i class="bi bi-people nav-icon"></i>
+          <div class="nav-item-content">
+            <span class="nav-label-text">NET Status</span>
+            <span class="nav-sub">NET Dashboard</span>
+          </div>
+          <i class="bi bi-chevron-down chevron"></i>
+        </button>
+        <div class="nav-children-wrap {% if request.path.startswith('/nt-') %}expanded{% endif %}"
+             id="net-submenu" data-nav-group="net" data-flyout-label="NET Status">
+          <div class="nav-children-inner">
+            <div class="nav-children">
+              <a href="/nt-dashboard" class="nav-child {% if request.path == '/nt-dashboard' %}active{% endif %}">
+                <i class="bi bi-bar-chart"></i><span>Campus Roster</span>
+              </a>
+              <a href="/nt-salary" class="nav-child {% if request.path == '/nt-salary' %}active{% endif %}">
+                <i class="bi bi-wallet2"></i><span>Salary Status</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if session.get('admin_auth') or session.get('emp_id') %}
+      {# Board — 1 child #}
+      <div>
+        <button type="button" onclick="dybToggleNav('board')" id="btn-board-menu"
+          class="nav-item {% if request.path.startswith('/announcements') or request.path.startswith('/admin/announcements') %}active expanded{% endif %}">
+          <i class="bi bi-megaphone nav-icon"></i>
+          <div class="nav-item-content">
+            <span class="nav-label-text">Board</span>
+            <span class="nav-sub">게시판</span>
+          </div>
+          <i class="bi bi-chevron-down chevron"></i>
+        </button>
+        <div class="nav-children-wrap {% if request.path.startswith('/announcements') or request.path.startswith('/admin/announcements') %}expanded{% endif %}"
+             id="board-submenu" data-nav-group="board" data-flyout-label="Board">
+          <div class="nav-children-inner">
+            <div class="nav-children">
+              <a href="/announcements" class="nav-child {% if request.path == '/announcements' or request.path.startswith('/announcements/') %}active{% endif %}">
+                <i class="bi bi-list-ul"></i><span>Announcements</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if session.get('admin_code') in ('admin', 'MASTER') %}
+      {# Server Settings — User Management + Roles + Legal + Logs #}
+      <div>
+        <button type="button" onclick="dybToggleNav('settings')" id="btn-pagesettings-menu"
+          class="nav-item {% if request.path.startswith('/admin/legal') or request.path.startswith('/admin/roles') or request.path == '/logs' or request.path == '/users' %}active expanded{% endif %}">
+          <i class="bi bi-gear nav-icon"></i>
+          <div class="nav-item-content">
+            <span class="nav-label-text">Server Settings</span>
+            <span class="nav-sub">서버 설정</span>
+          </div>
+          <i class="bi bi-chevron-down chevron"></i>
+        </button>
+        <div class="nav-children-wrap {% if request.path.startswith('/admin/legal') or request.path.startswith('/admin/roles') or request.path == '/logs' or request.path == '/users' %}expanded{% endif %}"
+             id="pagesettings-submenu" data-nav-group="settings" data-flyout-label="Server Settings">
+          <div class="nav-children-inner">
+            <div class="nav-children">
+              <a href="/users" class="nav-child {% if request.path == '/users' %}active{% endif %}">
+                <i class="bi bi-person-gear"></i><span>User Management</span>
+              </a>
+              <a href="/admin/roles" class="nav-child {% if request.path.startswith('/admin/roles') %}active{% endif %}">
+                <i class="bi bi-tag"></i><span>Roles</span>
+              </a>
+              <a href="/admin/legal/privacy" class="nav-child {% if request.path == '/admin/legal/privacy' %}active{% endif %}">
+                <i class="bi bi-shield-check"></i><span>Privacy Policy</span>
+              </a>
+              <a href="/admin/legal/terms" class="nav-child {% if request.path == '/admin/legal/terms' %}active{% endif %}">
+                <i class="bi bi-file-earmark-text"></i><span>Terms of Service</span>
+              </a>
+              <a href="/logs" class="nav-child {% if request.path == '/logs' %}active{% endif %}">
+                <i class="bi bi-journal-text"></i><span>System Logs</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# Locked section — 핸드오프 "REQUIRES LOGIN" (접기·펼치기 지원, default: collapsed) #}
+      <div class="nav-label nav-label-clickable" id="lockedSectionBtn" onclick="dybToggleLocked()" style="margin-top:16px;">
+        <i class="bi bi-lock"></i>
+        <span>REQUIRES LOGIN</span>
+        <i class="bi bi-chevron-down chevron"></i>
+      </div>
+      <div class="nav-children-wrap" data-nav-group="locked" id="locked-submenu">
+        <div class="nav-children-inner">
+          <div class="nav-children" style="margin-left:0; padding-left:0; border-left:none;">
+            <a href="#" onclick="handleLockedClick(event)" class="nav-item nav-locked">
+              <i class="bi bi-wallet2 nav-icon"></i>
+              <div class="nav-item-content">
+                <span class="nav-label-text" style="font-weight:500;">Payroll</span>
+                <span class="nav-sub">급여</span>
+              </div>
+              <i class="bi bi-lock lock-tail"></i>
+            </a>
+            <a href="#" onclick="handleLockedClick(event)" class="nav-item nav-locked">
+              <i class="bi bi-airplane nav-icon"></i>
+              <div class="nav-item-content">
+                <span class="nav-label-text" style="font-weight:500;">Vacation</span>
+                <span class="nav-sub">휴가</span>
+              </div>
+              <i class="bi bi-lock lock-tail"></i>
+            </a>
+            <a href="#" onclick="handleLockedClick(event)" class="nav-item nav-locked">
+              <i class="bi bi-file-earmark-person nav-icon"></i>
+              <div class="nav-item-content">
+                <span class="nav-label-text" style="font-weight:500;">Visa</span>
+                <span class="nav-sub">비자</span>
+              </div>
+              <i class="bi bi-lock lock-tail"></i>
+            </a>
+            <a href="#" onclick="handleLockedClick(event)" class="nav-item nav-locked">
+              <i class="bi bi-calendar3 nav-icon"></i>
+              <div class="nav-item-content">
+                <span class="nav-label-text" style="font-weight:500;">Class Schedule</span>
+                <span class="nav-sub">수업 스케줄</span>
+              </div>
+              <i class="bi bi-lock lock-tail"></i>
+            </a>
+            <a href="#" onclick="handleLockedClick(event)" class="nav-item nav-locked">
+              <i class="bi bi-house nav-icon"></i>
+              <div class="nav-item-content">
+                <span class="nav-label-text" style="font-weight:500;">Housing</span>
+                <span class="nav-sub">하우징</span>
+              </div>
+              <i class="bi bi-lock lock-tail"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Sidebar user footer — 로그인 시에만 #}
+    {% if session.get('admin_auth') %}
+      {% set _sbuser_display = session.get('display_name') or session.get('emp_name') or session.get('admin_email', 'U') %}
+      {% set _sbuser_role    = session.get('admin_code', 'NET') %}
+      <div class="sidebar-user" aria-label="Account">
+        <div class="sidebar-user-avatar">{{ _sbuser_display[0] | upper }}</div>
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-name">{{ _sbuser_display }}</span>
+          <span class="sidebar-user-role">{{ _sbuser_role | role_label }}</span>
+        </div>
+        <i class="bi bi-chevron-expand chevron-updown"></i>
+      </div>
+    {% endif %}
+  </aside>
+
+  <div id="main-wrapper" class="flex flex-col flex-1 min-h-screen relative">
+    
+    {# ── Header (Phase C redesign) ─────────────────────────────────────────
+       request.endpoint 기반 타이틀/브레드크럼 매핑. 누락된 endpoint 는 default.
+       ──────────────────────────────────────────────────────────────────── #}
+    {% set page_titles = {
+      'index':                              {'title': 'Dashboard',          'sub': 'Home · Overview'},
+      'eval_v2.admin_page':                 {'title': 'Sessions / Settings','sub': 'Evaluation · Admin'},
+      'eval_v2.status_page':                {'title': 'Evaluation Status',  'sub': 'Evaluation · Status'},
+      'eval_v2.form_page':                  {'title': 'Evaluation Form',    'sub': 'Evaluation · Form'},
+      'eval_v2.analysis_page':              {'title': 'Analysis',           'sub': 'Evaluation · Analysis'},
+      'eval_v2.annual_eval_page':           {'title': 'Annual Evaluation',  'sub': 'Evaluation · Annual'},
+      'eval_v2.sub_assignment_page':        {'title': 'SUB CTL',            'sub': 'Evaluation · SUB CTL'},
+      'eval_v2.campus_status_page':         {'title': 'Campus Status',      'sub': 'Evaluation · Campus'},
+      'eval_v2.my_tasks_page':              {'title': 'My Tasks',           'sub': 'Evaluation · My Tasks'},
+      'public_eval_form':                   {'title': 'Evaluation Form',    'sub': 'Evaluation · Form'},
+      'nt.nt_dashboard':                    {'title': 'NET Status',         'sub': 'NET · Campus Roster'},
+      'nt.nt_salary':                       {'title': 'Salary Status',      'sub': 'NET · Salary'},
+      'announcements.list_page':            {'title': 'Announcements',      'sub': 'Board · List'},
+      'announcements.detail_page':          {'title': 'Announcement',       'sub': 'Board · Detail'},
+      'announcements.new_page':             {'title': 'New Announcement',   'sub': 'Board · New'},
+      'announcements.edit_page':            {'title': 'Edit Announcement',  'sub': 'Board · Edit'},
+      'users.user_management':              {'title': 'User Management',    'sub': 'Server · Users'},
+      'legal.privacy_page':                 {'title': 'Privacy Policy',     'sub': 'Legal · Privacy'},
+      'legal.terms_page':                   {'title': 'Terms of Service',   'sub': 'Legal · Terms'},
+      'legal.edit_privacy':                 {'title': 'Edit Privacy Policy','sub': 'Server · Legal'},
+      'legal.edit_terms':                   {'title': 'Edit Terms',         'sub': 'Server · Legal'},
+      'notifications_bp.notifications_page':{'title': 'Notifications',      'sub': 'Inbox · All'},
+      'logs.logs_page':                     {'title': 'Audit Logs',         'sub': 'Server · Logs'},
+      'auth.account_page':                  {'title': 'Account Settings',   'sub': 'Account · Settings'},
+      'retired.retired_home':               {'title': 'Retired',            'sub': 'Account · Retired'},
+    } %}
+    {% set _pt = page_titles.get(request.endpoint, {'title': 'NHR Portal', 'sub': '통합 운영 포털'}) %}
+
+    <header class="app-header">
+      <div class="hdr-left">
+        <button class="hdr-mobile-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+          <i class="bi bi-list"></i>
+        </button>
+        <div class="hdr-title-block">
+          <div class="header-title">{{ _pt.title }}</div>
+          {% if _pt.sub %}<div class="header-sub">{{ _pt.sub }}</div>{% endif %}
+        </div>
+      </div>
+
+      {# Search bar stub — clicking triggers dummy alert until command palette exists.
+         kbd 라벨은 navigator.platform 기준으로 Ctrl/⌘ 자동 swap (theme-toggle.js DOMContentLoaded). #}
+      <button type="button" class="hdr-search" onclick="alert('Search coming soon\n커맨드 팔레트 준비 중')">
+        <i class="bi bi-search" style="font-size:15px; flex-shrink:0;"></i>
+        <span>Search teachers, sessions, announcements…</span>
+        <kbd id="hdrSearchKbd" class="hdr-kbd">Ctrl K</kbd>
+      </button>
+
+      <div class="hdr-actions">
+        {# Theme toggle — icon swapped by theme-toggle.js DOMContentLoaded #}
+        <button id="themeToggleBtn" class="hdr-icon-btn" onclick="dybToggleTheme()" aria-label="Switch theme">
+          <i id="themeToggleIcon" class="bi bi-moon-stars"></i>
+        </button>
+
+        {# Language toggle — label-only stub (localStorage dyb-lang) #}
+        <button type="button" class="hdr-lang-btn" onclick="dybToggleLang(this)" aria-label="Toggle language">한국어</button>
+
+        {% if session.get('admin_auth') %}
+          {# ── Notification bell — 기존 API·JS 로직 (라인 1100+) 보존 ── #}
+          <div style="position:relative;">
+            <button id="notif-bell" class="hdr-icon-btn" aria-label="Notifications">
+              <i class="bi bi-bell-fill"></i>
+              <span id="notif-badge" class="hdr-badge-dot" style="display:none;"></span>
+            </button>
+
+            {# Notification dropdown — 내부 구조 보존, 외곽은 .app-header 토큰으로 통합 #}
+            <div id="notif-dropdown" style="position:absolute;right:0;top:44px;width:360px;max-height:480px;background:var(--surface);border-radius:14px;border:1px solid var(--border);z-index:100;overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;border-bottom:1px solid var(--divider);">
+                <span style="font-size:14px;font-weight:700;color:var(--text-strong);">Notifications</span>
+                <button id="notif-mark-all" style="font-size:11px;font-weight:600;color:var(--primary);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:6px;transition:background .15s;" onmouseover="this.style.background='var(--primary-soft)';" onmouseout="this.style.background='transparent';">Mark all read</button>
+              </div>
+              <div id="notif-list" style="max-height:380px;overflow-y:auto;padding:6px 0;"></div>
+              <div id="notif-empty" style="display:none;padding:40px 16px;text-align:center;color:var(--text-dim);font-size:13px;">
+                <i class="bi bi-bell" style="font-size:28px;display:block;margin-bottom:8px;opacity:.5;"></i>
+                No notifications yet
+              </div>
+              <a href="/notifications" style="display:block;text-align:center;padding:10px 16px;border-top:1px solid var(--divider);font-size:12px;font-weight:700;color:var(--primary);text-decoration:none;transition:background .15s;" onmouseover="this.style.background='var(--primary-soft)'" onmouseout="this.style.background='transparent'">View All Notifications</a>
+            </div>
+          </div>
+
+          <div class="hdr-divider"></div>
+
+          {# ── User profile chip — 기존 API·JS 보존 ── #}
+          {% set _display = session.get('display_name') or session.get('emp_name') or session.get('admin_email', 'U') %}
+          {% set _role = session.get('admin_code', 'NET') %}
+          <div style="position:relative;">
+            <button id="profile-btn" class="hdr-user-chip" aria-label="Account menu">
+              <div class="hdr-user-avatar">{{ _display[0] | upper }}</div>
+              <div class="hdr-user-info">
+                <span class="hdr-user-name">{{ _display }}</span>
+                <span class="hdr-user-role">{{ _role | role_label }}</span>
+              </div>
+              <i class="bi bi-chevron-down chevron"></i>
+            </button>
+
+            <div id="profile-dropdown" style="position:absolute;right:0;top:44px;width:240px;background:var(--surface);border-radius:14px;border:1px solid var(--border);z-index:100;overflow:hidden;padding:6px 0;">
+              <div style="padding:12px 16px 10px;border-bottom:1px solid var(--divider);">
+                <p style="font-size:14px;font-weight:700;color:var(--text-strong);margin:0;">{{ _display }}</p>
+                <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">{{ session.get('admin_email', '') }}</p>
+                {% if session.get('admin_campus') %}
+                <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">{{ session.get('admin_campus') }}</p>
+                {% endif %}
+              </div>
+              <a href="/account" style="display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;transition:background .15s;" onmouseover="this.style.background='var(--surface-low)';" onmouseout="this.style.background='transparent';">
+                <i class="bi bi-gear" style="font-size:15px;color:var(--text-muted);"></i> Account Settings
+              </a>
+              <a href="/logout" style="display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:13px;font-weight:600;color:var(--primary);text-decoration:none;transition:background .15s;" onmouseover="this.style.background='var(--primary-soft)';" onmouseout="this.style.background='transparent';">
+                <i class="bi bi-box-arrow-right" style="font-size:15px;"></i> Logout
+              </a>
+            </div>
+          </div>
+        {% else %}
+          <button class="hdr-login-btn" onclick="window.location.href='/login'">
+            <i class="bi bi-box-arrow-in-right"></i>
+            <span>Login · 로그인</span>
+          </button>
+        {% endif %}
+      </div>
+    </header>
+
+    <main class="flex-1 relative" style="background: var(--page-bg);">
+      <div class="p-4 sm:p-6 md:p-8 lg:p-10 relative z-10 h-full">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="bg-gray-950 text-gray-400 py-10 px-4 sm:px-8 border-t border-gray-800 flex-shrink-0 mt-auto">
+      <div class="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between gap-8 md:items-start text-center md:text-left">
+        <div class="flex flex-col gap-4">
+          <div class="flex items-center gap-4 flex-wrap justify-center md:justify-start text-sm">
+            <a href="/privacy" class="font-semibold text-white hover:text-dybred transition-colors tracking-tight">개인정보 처리방침</a>
+            <span class="text-gray-700">|</span>
+            <a href="/terms" class="hover:text-white transition-colors">이용약관</a>
+          </div>
+          <div class="text-sm tracking-tight text-gray-500">
+            <p class="mb-1">(주)DYB 교육 | 서울특별시 강남구 남부순환로 2917 청실 종합상가 3층</p>
+            <p>© 2026 DYB Education All Rights Reserved.</p>
+          </div>
+        </div>
+        <div class="relative group w-fit mx-auto md:mx-0">
+          <select class="appearance-none bg-[#2d323e] text-gray-300 text-sm rounded-xl px-6 py-3 pr-12 hover:bg-[#383e4d] hover:text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-dybred focus:border-transparent transition-all cursor-pointer shadow-sm" onchange="if(this.value) window.open(this.value, '_blank');">
+            <option value="" disabled selected hidden>Family Site</option>
+            <option value="https://net.dybedu.com/main/main.php">DYB Native Teachers</option>
+            <option value="https://www.dybedu.com/main/sub?goPage=recruit_application&menu_code=5_52">DYB 인재채용</option>
+            <option value="https://www.dybedu.com/main/">DYB 교육</option>
+            <option value="https://www.choisun.co.kr/main/?CAMP_LOCA_CD=001/">최선어학원</option>
+          </select>
+          <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-white transition-colors">
+            <i class="bi bi-chevron-down"></i>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  {% block modals %}{% endblock %}
+
+  {# 글로벌 알림 모달 — modal_icons.js 의 showModal('info'/'warning'/...) 가 사용.
+     id 와 자식 구조는 modal_icons.js 의 전제(L27)와 일치해야 함. 페이지가
+     자체 #modalOverlay 를 정의하면(예: eval_v2/form.html) 페이지 정의가 우선
+     동작 — 같은 id 가 두 개라도 querySelector 는 첫 번째를 반환. #}
+  <div id="modalOverlay" class="modal-backdrop" style="display:none;z-index:10000">
+    <div class="p-8 rounded-2xl w-[92%] text-center shadow-2xl border"
+         style="background:var(--surface-lowest);border-color:var(--outline-variant);max-width:560px">
+      <div id="modalIcon" class="text-5xl mb-4"></div>
+      <h3 id="modalTitle" class="text-xl font-extrabold mb-2.5 tracking-tight whitespace-pre-line"
+          style="color:var(--on-surface)"></h3>
+      <p id="modalText" class="text-base mb-6 whitespace-pre-line leading-relaxed"
+         style="color:var(--on-surface-variant);text-align:left"></p>
+      <button onclick="closeModal()" class="w-full py-3 rounded-xl text-base font-bold"
+              style="background:var(--primary);color:#fff;border:none;text-align:center;cursor:pointer;transition:background .15s">OK</button>
+    </div>
+  </div>
+
+  {% if session.get('admin_auth') %}
+  <!-- ── T&C 동의 모달 (첫 로그인·약관 개정 시) ───────────────────────────── -->
+  <div id="tosAgreeModal" class="modal-backdrop" style="display:none;z-index:10000;">
+    <div class="modal-box" style="background:var(--surface);border-radius:12px;width:100%;max-width:760px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);border:3px solid var(--text-strong);">
+      <!-- Header -->
+      <div style="padding:20px 28px;border-bottom:2.5px solid var(--text-strong);display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-shrink:0;">
+        <div style="flex:1;min-width:0;">
+          <div id="tosHeaderTitle" style="font-size:16px;font-weight:800;color:var(--text-strong);">
+            <i class="bi bi-shield-check mr-1" style="color:var(--primary);"></i>
+            <span data-tos-lang-ko data-tos-title-ko>동의 필요</span>
+            <span data-tos-lang-en data-tos-title-en style="display:none;">Agreement Required</span>
+          </div>
+          <div id="tosHeaderSubtitle" style="font-size:12px;color:var(--text-muted);margin-top:3px;">
+            <span data-tos-lang-ko data-tos-subtitle-ko>서비스 이용을 위해 개인정보 처리방침 및 이용약관 동의가 필요합니다.</span>
+            <span data-tos-lang-en data-tos-subtitle-en style="display:none;">Please review and agree to the Privacy Policy and Terms of Service to continue.</span>
+          </div>
+        </div>
+        <!-- 언어 토글 -->
+        <div style="display:inline-flex;border:2px solid var(--text-strong);border-radius:6px;overflow:hidden;flex-shrink:0;">
+          <button type="button" id="tosLangBtnKo" onclick="tosSetLang('ko')"
+                  style="padding:5px 11px;font-size:11px;font-weight:700;background:var(--primary);color:#fff;border:none;cursor:pointer;">
+            한국어
+          </button>
+          <button type="button" id="tosLangBtnEn" onclick="tosSetLang('en')"
+                  style="padding:5px 11px;font-size:11px;font-weight:700;background:var(--surface);color:var(--text-muted);border:none;border-left:2px solid var(--text-strong);cursor:pointer;">
+            English
+          </button>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <div id="tosTabs" style="display:flex;border-bottom:2.5px solid var(--text-strong);flex-shrink:0;background:var(--surface-low);">
+        <button type="button" id="tosTabPrivacy" onclick="tosSwitchTab('privacy')"
+          style="flex:1;padding:12px 16px;font-size:13px;font-weight:700;color:var(--primary);background:var(--surface);border:none;border-bottom:3px solid var(--primary);cursor:pointer;transition:all .25s ease;">
+          <span data-tos-lang-ko>1. 개인정보 처리방침</span>
+          <span data-tos-lang-en style="display:none;">1. Privacy Policy</span>
+          <span id="tosPrivacyCheckMark" style="display:none;color:var(--success);margin-left:6px;"><i class="bi bi-check-circle-fill"></i></span>
+        </button>
+        <button type="button" id="tosTabTerms" onclick="tosSwitchTab('terms')"
+          style="flex:1;padding:12px 16px;font-size:13px;font-weight:700;color:var(--text-muted);background:transparent;border:none;border-bottom:3px solid transparent;cursor:pointer;transition:all .25s ease;border-left:2px solid var(--outline-variant);">
+          <span data-tos-lang-ko>2. 이용약관</span>
+          <span data-tos-lang-en style="display:none;">2. Terms of Service</span>
+          <span id="tosTermsCheckMark" style="display:none;color:var(--success);margin-left:6px;"><i class="bi bi-check-circle-fill"></i></span>
+        </button>
+      </div>
+      <!-- Scrollable content — 탭 전환 시 opacity + translate 로 부드럽게 fade -->
+      <div id="tosScrollArea" style="flex:1;overflow-y:auto;padding:20px 28px;background:var(--surface-low);color:var(--text);">
+        <div id="tosLoadingHint" style="text-align:center;color:var(--text-dim);font-size:13px;padding:40px 0;">Loading...</div>
+        <div id="tosContentPrivacy" style="display:none;opacity:1;transform:translateX(0);transition:opacity .22s ease, transform .22s ease;"></div>
+        <div id="tosContentTerms" style="display:none;opacity:1;transform:translateX(0);transition:opacity .22s ease, transform .22s ease;"></div>
+      </div>
+      <!-- Footer -->
+      <div style="padding:16px 28px;border-top:2.5px solid var(--text-strong);background:var(--surface);flex-shrink:0;">
+        <div id="tosScrollHint" style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">
+          <i class="bi bi-arrow-down-circle"></i>
+          <span data-tos-lang-ko><strong id="tosScrollHintTabKo">각 문서</strong>를 끝까지 스크롤하면 동의 체크박스가 활성화됩니다.</span>
+          <span data-tos-lang-en style="display:none;">Scroll to the bottom of <strong id="tosScrollHintTabEn">each document</strong> to enable the agreement checkboxes.</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;opacity:.5;padding:10px 14px;border:2px solid var(--outline-variant);border-radius:8px;background:var(--surface-low);color:var(--text);transition:all .2s ease;" id="tosChkPrivacyLabel">
+            <input type="checkbox" id="tosChkPrivacy" disabled onchange="tosUpdateAgreeButton()" style="width:16px;height:16px;accent-color:var(--primary);">
+            <span data-tos-lang-ko><strong>개인정보 처리방침</strong>을 읽고 이에 동의합니다.</span>
+            <span data-tos-lang-en style="display:none;">I have read and agree to the <strong>Privacy Policy</strong>.</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;opacity:.5;padding:10px 14px;border:2px solid var(--outline-variant);border-radius:8px;background:var(--surface-low);color:var(--text);transition:all .2s ease;" id="tosChkTermsLabel">
+            <input type="checkbox" id="tosChkTerms" disabled onchange="tosUpdateAgreeButton()" style="width:16px;height:16px;accent-color:var(--primary);">
+            <span data-tos-lang-ko><strong>이용약관</strong>을 읽고 이에 동의합니다.</span>
+            <span data-tos-lang-en style="display:none;">I have read and agree to the <strong>Terms of Service</strong>.</span>
+          </label>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:10px;">
+          <button type="button" onclick="tosDecline()"
+            style="padding:10px 20px;border-radius:6px;border:2px solid var(--on-surface-variant);background:var(--surface);color:var(--on-surface-variant);font-size:13px;font-weight:600;cursor:pointer;">
+            <span data-tos-lang-ko>거부 및 로그아웃</span>
+            <span data-tos-lang-en style="display:none;">Decline &amp; Sign out</span>
+          </button>
+          <button type="button" id="tosAgreeBtn" disabled onclick="tosAgree()"
+            style="padding:10px 24px;border-radius:6px;border:2px solid var(--primary);background:var(--primary);color:#fff;font-size:13px;font-weight:700;cursor:pointer;opacity:.4;transition:opacity .2s ease, transform .15s ease;">
+            <i class="bi bi-check"></i>
+            <span data-tos-lang-ko>동의하고 계속</span>
+            <span data-tos-lang-en style="display:none;">Agree &amp; Continue</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <script>
+    // ─────────────────────────────────────────────────────────────────
+    // Sidebar / Nav Accordion JS (Phase D — Claude design handoff 기반)
+    //
+    // 주요 변경:
+    //   - localStorage key: sidebarCollapsed → dyb-sidebar-collapsed
+    //     (FOUC 방지 inline script 에서 1회 마이그레이션 처리)
+    //   - 4개 토글 함수 (toggleEvalV2Menu/NETMenu/BoardMenu/PageSettingsMenu)
+    //     → 단일 dybToggleNav(key). nav-item onclick 에서 'eval'|'net'|
+    //       'board'|'settings' 키 전달. 한 번에 한 그룹만 펼침 (원칙).
+    //   - 아코디언 애니메이션: grid-template-rows 0fr↔1fr (.expanded).
+    //     기존 max-height + opacity 트릭 대체.
+    //   - 폭값: 4.5rem (접힘) / 13rem (펼침).
+    //   - 클래스명 통합: .menu-item/.menu-text/.menu-icon/.collapsed-tooltip
+    //     → .nav-item/.nav-item-content/.nav-children-wrap (CSS 에서 처리).
+    //   - Flyout 로직 (is-flyout) 보존 — 접힘 상태 hover 시 popout.
+    // ─────────────────────────────────────────────────────────────────
+
+    // localStorage 에서 접힘 상태 복원 (페이지 이동 후에도 유지)
+    // 초기 렌더링은 <head> sb-pre-collapsed CSS 가 담당 (FOUC 방지)
+    let isCollapsed = localStorage.getItem('dyb-sidebar-collapsed') === 'true';
+
+    // DOM 준비 후 접힘 상태 UI 동기화
+    document.addEventListener('DOMContentLoaded', function () {
+      document.documentElement.style.setProperty('--sb-w', isCollapsed ? '4.5rem' : '13rem');
+
+      const sidebar    = document.getElementById('sidebar');
+      const toggleIcon = document.getElementById('toggle-icon');
+      const togglePill = document.getElementById('sidebarTogglePill');
+
+      if (isCollapsed) {
+        if (sidebar) sidebar.classList.add('is-collapsed');
+        if (toggleIcon) toggleIcon.classList.replace('bi-chevron-left', 'bi-chevron-right');
+        if (togglePill) togglePill.setAttribute('aria-label', '사이드바 펼치기');
+      } else {
+        if (togglePill) togglePill.setAttribute('aria-label', '사이드바 접기');
+      }
+    });
+
+    // 모바일 오버레이 메뉴 토글 — <1024px 에서 작동
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('mobile-overlay');
+      if (!sidebar) return;
+      sidebar.classList.toggle('mobile-open');
+      if (overlay) overlay.classList.toggle('hidden');
+    }
+
+    // 데스크톱 사이드바 접기/펼치기
+    function toggleDesktopSidebar() {
+      document.documentElement.classList.remove('sb-pre-collapsed');
+      isCollapsed = !isCollapsed;
+      localStorage.setItem('dyb-sidebar-collapsed', isCollapsed);
+
+      const sidebar    = document.getElementById('sidebar');
+      const toggleIcon = document.getElementById('toggle-icon');
+      const togglePill = document.getElementById('sidebarTogglePill');
+
+      document.documentElement.style.setProperty('--sb-w', isCollapsed ? '4.5rem' : '13rem');
+
+      if (isCollapsed) {
+        closeAllFlyouts();
+        if (sidebar) sidebar.classList.add('is-collapsed');
+        if (toggleIcon) toggleIcon.classList.replace('bi-chevron-left', 'bi-chevron-right');
+        if (togglePill) togglePill.setAttribute('aria-label', '사이드바 펼치기');
+      } else {
+        closeAllFlyouts();
+        if (sidebar) sidebar.classList.remove('is-collapsed');
+        if (toggleIcon) toggleIcon.classList.replace('bi-chevron-right', 'bi-chevron-left');
+        if (togglePill) togglePill.setAttribute('aria-label', '사이드바 접기');
+      }
+    }
+
+    function handleLockedClick(e) {
+      e.preventDefault();
+      alert("This service requires login.\n로그인이 필요한 서비스입니다.");
+    }
+
+    // ── Nav accordion (한 번에 한 그룹만 펼침) ────────────────────────
+    // key: 'eval' | 'net' | 'board' | 'settings'
+    // Markup 전제:
+    //   <button class="nav-item" onclick="dybToggleNav('eval')">
+    //   <div class="nav-children-wrap" data-nav-group="eval">...</div>
+    function dybToggleNav(key) {
+      const button = document.querySelector(`.nav-item[onclick*="dybToggleNav('${key}')"]`);
+      const wrap   = document.querySelector(`.nav-children-wrap[data-nav-group="${key}"]`);
+      if (!button || !wrap) return;
+
+      // 접힘 상태에선 flyout 로직 사용 (핸드오프 READMEs 원칙에 따라 아코디언 비활성)
+      if (isCollapsed) {
+        if (wrap.classList.contains('is-flyout')) {
+          closeAllFlyouts();
+        } else {
+          _openFlyout(wrap.id, button);
+        }
+        return;
+      }
+
+      const willOpen = !wrap.classList.contains('expanded');
+
+      // 한 번에 한 그룹만: 다른 expanded 그룹 모두 닫음
+      if (willOpen) {
+        document.querySelectorAll('.nav-children-wrap.expanded').forEach(w => {
+          if (w !== wrap) {
+            w.classList.remove('expanded');
+            const otherKey = w.getAttribute('data-nav-group');
+            const otherBtn = document.querySelector(`.nav-item[onclick*="dybToggleNav('${otherKey}')"]`);
+            if (otherBtn) otherBtn.classList.remove('expanded');
+          }
+        });
+      }
+
+      wrap.classList.toggle('expanded', willOpen);
+      button.classList.toggle('expanded', willOpen);
+    }
+
+    // ── Flyout helpers (접힌 상태 전용) ────────────────────────────
+    function _openFlyout(submenuId, triggerBtn) {
+      closeAllFlyouts();
+      const submenu = document.getElementById(submenuId);
+      if (!submenu || !triggerBtn) return;
+      const rect = triggerBtn.getBoundingClientRect();
+      submenu.classList.add('is-flyout');
+      submenu.style.top = rect.top + 'px';
+      setTimeout(() => document.addEventListener('click', _onFlyoutOutsideClick), 0);
+    }
+
+    function _closeFlyout(el) {
+      el.classList.remove('is-flyout');
+      el.style.top = '';
+    }
+
+    function closeAllFlyouts() {
+      document.querySelectorAll('.is-flyout').forEach(_closeFlyout);
+      document.removeEventListener('click', _onFlyoutOutsideClick);
+    }
+
+    function _onFlyoutOutsideClick(e) {
+      // 플라이아웃 내부 or nav-item 트리거 클릭은 무시
+      if (e.target.closest('.is-flyout') || e.target.closest('.nav-item')) {
+        setTimeout(() => document.addEventListener('click', _onFlyoutOutsideClick), 0);
+        return;
+      }
+      closeAllFlyouts();
+    }
+
+    // ── REQUIRES LOGIN 섹션 접기·펼치기 (MAIN 섹션과 독립) ─────────────
+    // 기본 접힘 (로그인 전엔 사용 안 하는 메뉴라 화면 공간 절약).
+    // localStorage key 'dyb-locked-expanded' 로 상태 유지.
+    function dybToggleLocked() {
+      const wrap = document.getElementById('locked-submenu');
+      const btn  = document.getElementById('lockedSectionBtn');
+      if (!wrap || !btn) return;
+      const willOpen = !wrap.classList.contains('expanded');
+      wrap.classList.toggle('expanded', willOpen);
+      btn.classList.toggle('expanded', willOpen);
+      try { localStorage.setItem('dyb-locked-expanded', willOpen ? 'true' : 'false'); } catch (_) {}
+    }
+    // 초기 상태 복원 (저장값 없으면 collapsed 기본).
+    document.addEventListener('DOMContentLoaded', function () {
+      const saved = localStorage.getItem('dyb-locked-expanded');
+      if (saved === 'true') {
+        const wrap = document.getElementById('locked-submenu');
+        const btn  = document.getElementById('lockedSectionBtn');
+        if (wrap) wrap.classList.add('expanded');
+        if (btn)  btn.classList.add('expanded');
+      }
+    });
+
+    /* ═══════════════════════════════════════════════════════════
+       Notifications & Profile Dropdowns
+       ═══════════════════════════════════════════════════════════ */
+    (function(){
+      const bell      = document.getElementById('notif-bell');
+      const dropdown  = document.getElementById('notif-dropdown');
+      const listEl    = document.getElementById('notif-list');
+      const emptyEl   = document.getElementById('notif-empty');
+      const badgeEl   = document.getElementById('notif-badge');
+      const markAllBtn= document.getElementById('notif-mark-all');
+      const profBtn   = document.getElementById('profile-btn');
+      const profDrop  = document.getElementById('profile-dropdown');
+
+      if(!bell) return; // not logged in
+
+      /* ── helpers ── */
+      function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+      function timeAgo(iso){
+        if(!iso) return '';
+        const d = new Date(iso);
+        const diff = (Date.now() - d.getTime()) / 1000;
+        if(diff < 60)  return 'just now';
+        if(diff < 3600) return Math.floor(diff/60) + 'm ago';
+        if(diff < 86400) return Math.floor(diff/3600) + 'h ago';
+        if(diff < 604800) return Math.floor(diff/86400) + 'd ago';
+        return d.toLocaleDateString();
+      }
+
+      const typeIcons = {
+        announcement: 'bi-megaphone-fill',
+        evaluation: 'bi-clipboard-check-fill',
+        mention: 'bi-at',
+        system: 'bi-info-circle-fill',
+      };
+      const typeColors = {
+        announcement: '#B01116',
+        evaluation: '#2563eb',
+        mention: '#7c3aed',
+        system: '#6b7280',
+      };
+
+      /* ── render ── */
+      function renderNotifications(items){
+        if(!items.length){
+          listEl.style.display='none'; emptyEl.style.display='block'; return;
+        }
+        listEl.style.display='block'; emptyEl.style.display='none';
+        listEl.innerHTML = items.map(n => {
+          const icon = typeIcons[n.type] || 'bi-bell';
+          const color = typeColors[n.type] || '#6b7280';
+          const unread = !n.read;
+          return `<a href="#" data-nid="${esc(n.id)}" data-link="${esc(n.link||'')}"
+            class="notif-item ${unread?'notif-unread':'notif-read'}"
+            style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;text-decoration:none;transition:background .12s;cursor:pointer;">
+            <div style="width:32px;height:32px;border-radius:8px;background:${color}15;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="bi ${icon}" style="font-size:14px;color:${color};"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <p style="font-size:13px;font-weight:${unread?'700':'500'};color:var(--text-strong);margin:0;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(n.title)}</p>
+              <p style="font-size:12px;color:var(--text-muted);margin:2px 0 0;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(n.message)}</p>
+              <p style="font-size:10px;color:var(--text-dim);margin:4px 0 0;">${timeAgo(n.created_at)}</p>
+            </div>
+            ${unread ? '<div style="width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:6px;"></div>' : ''}
+          </a>`;
+        }).join('');
+      }
+
+      /* ── API calls ── */
+      async function fetchCount(){
+        try{
+          const r = await fetch('/api/notifications/unread-count',{credentials:'same-origin'});
+          const d = await r.json();
+          if(d.status==='SUCCESS'){
+            const c = d.count||0;
+            badgeEl.textContent = c > 99 ? '99+' : c;
+            badgeEl.style.display = c > 0 ? 'block' : 'none';
+            const sidebarDot = document.getElementById('sidebar-notif-dot');
+            if(sidebarDot) sidebarDot.style.display = c > 0 ? 'block' : 'none';
+          }
+        }catch(e){ console.error('notif count err',e); }
+      }
+
+      async function fetchList(){
+        try{
+          const r = await fetch('/api/notifications/list',{credentials:'same-origin'});
+          const d = await r.json();
+          if(d.status==='SUCCESS') renderNotifications(d.notifications||[]);
+        }catch(e){ console.error('notif list err',e); }
+      }
+
+      /* ── toggle dropdown ── */
+      let notifOpen = false;
+      function closeNotif(){ dropdown.classList.remove('open'); notifOpen=false; }
+      function openNotif(){ dropdown.classList.add('open'); notifOpen=true; fetchList(); }
+      bell.addEventListener('click', (e)=>{ e.stopPropagation(); closeProf(); notifOpen?closeNotif():openNotif(); });
+
+      /* ── click notification item ── */
+      listEl.addEventListener('click', async (e)=>{
+        e.preventDefault();
+        const a = e.target.closest('a[data-nid]');
+        if(!a) return;
+        const nid = a.dataset.nid;
+        const link = a.dataset.link;
+        try{ await fetch('/api/notifications/mark-read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[nid]})}); }catch(err){}
+        fetchCount();
+        if(link) window.location.href = link;
+        else closeNotif();
+      });
+
+      /* ── mark all read ── */
+      markAllBtn.addEventListener('click', async ()=>{
+        try{
+          await fetch('/api/notifications/mark-all-read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});
+          fetchCount(); fetchList();
+        }catch(e){ console.error(e); }
+      });
+
+      /* ── Profile dropdown ── */
+      let profOpen = false;
+      function closeProf(){ profDrop.classList.remove('open'); profOpen=false; }
+      function openProf(){ profDrop.classList.add('open'); profOpen=true; }
+      profBtn.addEventListener('click', (e)=>{ e.stopPropagation(); closeNotif(); profOpen?closeProf():openProf(); });
+
+      /* ── Close dropdowns on outside click ── */
+      document.addEventListener('click', (e)=>{ closeNotif(); closeProf(); if(!e.target.closest('.dyb-dd-trigger')&&!e.target.closest('.dyb-dd-menu')) _closeAllDyb(); });
+      dropdown.addEventListener('click', (e)=>e.stopPropagation());
+      profDrop.addEventListener('click', (e)=>e.stopPropagation());
+
+      /* ── Poll unread count ── */
+      fetchCount();
+      setInterval(fetchCount, 60000);
+    })();
+
+    // ── 전역 커스텀 드롭다운 헬퍼 (모든 페이지에서 사용 가능) ──
+    function _closeAllDyb() {
+      document.querySelectorAll('.dyb-dd-menu.open').forEach(d => d.classList.remove('open'));
+      document.querySelectorAll('.dyb-dd-trigger.open').forEach(t => t.classList.remove('open'));
+    }
+    // dybToggle('foo') → #fooTrigger + #fooMenu 토글
+    function dybToggle(id) {
+      const trigger = document.getElementById(id + 'Trigger');
+      const menu    = document.getElementById(id + 'Menu');
+      if (!trigger || !menu || trigger.classList.contains('locked')) return;
+      const wasOpen = menu.classList.contains('open');
+      _closeAllDyb();
+      if (!wasOpen) { trigger.classList.add('open'); menu.classList.add('open'); }
+    }
+    // dybPick('foo', value, label, optionalCallback)
+    // → 라벨 갱신, has-value 토글, 메뉴 닫기, 히든 select 값 설정 후 change 이벤트 발생
+    function dybPick(id, value, label, cb) {
+      const trigger = document.getElementById(id + 'Trigger');
+      const menu    = document.getElementById(id + 'Menu');
+      const select  = document.getElementById(id + 'Select');
+      if (trigger) {
+        const lbl = trigger.querySelector('.dyb-label');
+        if (lbl) lbl.textContent = label;
+        trigger.dataset.value = value;
+        trigger.classList.toggle('has-value', !!value);
+        trigger.classList.remove('open');
+      }
+      if (menu) {
+        menu.classList.remove('open');
+        menu.querySelectorAll('.dyb-dd-option').forEach(o =>
+          o.classList.toggle('selected', o.dataset.value === String(value)));
+      }
+      if (select) { select.value = value; select.dispatchEvent(new Event('change')); }
+      if (typeof cb === 'function') cb(value);
+    }
+
+    // _upgradeDybSelects() — <select class="dyb-select"> 를 자동으로 커스텀 trigger+menu 로 변환
+    // 이미 변환된 select(data-dyb-upgraded)는 건너뜀.
+    // 페이지 로드 후 동적으로 추가된 select 가 있으면 다시 호출하여 일괄 적용 가능.
+    function _upgradeDybSelects() {
+      document.querySelectorAll('select.dyb-select:not([data-dyb-upgraded])').forEach(function(sel) {
+        sel.dataset.dybUpgraded = '1';
+
+        const isSm      = sel.classList.contains('dyb-dd-sm');
+        const isLg      = sel.classList.contains('dyb-dd-lg');
+        const toRight   = sel.classList.contains('to-right');
+        const isCols3   = sel.classList.contains('dyb-dd-cols-3');
+        const placeholder = sel.dataset.placeholder || 'Select...';
+
+        // ── Wrapper (position:relative 컨테이너) ──
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:relative;display:inline-block;';
+
+        // ── Trigger ──
+        const trigger = document.createElement('div');
+        trigger.className = 'dyb-dd-trigger'
+          + (isSm ? ' dyb-dd-sm' : '')
+          + (isLg ? ' dyb-dd-lg' : '');
+        if (sel.style.cssText) trigger.style.cssText = sel.style.cssText;
+
+        const initOpt = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+        const initDisabled = initOpt && initOpt.disabled;
+        const initVal = (!initDisabled && initOpt) ? (initOpt.value || '') : '';
+        const initLbl = (!initDisabled && initOpt && initOpt.value) ? initOpt.text : placeholder;
+        const initIcon = (!initDisabled && initOpt && initOpt.value && initOpt.dataset) ? (initOpt.dataset.icon || '') : '';
+
+        trigger.dataset.value = initVal;
+        if (initVal) trigger.classList.add('has-value');
+
+        // <option data-icon="bi-xxx text-slate-500"> 가 있으면 label 앞에 <i> prefix 렌더.
+        // 없으면 plain text — 이 select 가 아이콘 opt-in 하지 않은 경우와 완전 호환.
+        function _setLabelWithIcon(lblEl, text, iconClass) {
+          lblEl.textContent = '';
+          if (iconClass) {
+            const iEl = document.createElement('i');
+            iEl.className = /^bi\s/.test(iconClass) ? iconClass : ('bi ' + iconClass);
+            iEl.style.marginRight = '6px';
+            lblEl.appendChild(iEl);
+          }
+          lblEl.appendChild(document.createTextNode(text));
+        }
+
+        const _lblSpan = document.createElement('span');
+        _lblSpan.className = 'dyb-label';
+        _setLabelWithIcon(_lblSpan, initLbl, initIcon);
+        const _chevron = document.createElement('i');
+        _chevron.className = 'bi bi-chevron-down';
+        trigger.appendChild(_lblSpan);
+        trigger.appendChild(_chevron);
+
+        // ── Menu ──
+        const menu = document.createElement('div');
+        menu.className = 'dyb-dd-menu'
+          + (toRight  ? ' to-right'    : '')
+          + (isCols3  ? ' dyb-dd-cols-3' : '');
+
+        function buildOptions() {
+          menu.innerHTML = '';
+          Array.from(sel.options).forEach(function(opt) {
+            if (opt.disabled && !opt.value) return; // placeholder option
+            const item = document.createElement('div');
+            item.className = 'dyb-dd-option' + (opt.value === sel.value ? ' selected' : '');
+            item.dataset.value = opt.value;
+            const optIcon = (opt.dataset && opt.dataset.icon) || '';
+            if (optIcon) {
+              const iEl = document.createElement('i');
+              iEl.className = /^bi\s/.test(optIcon) ? optIcon : ('bi ' + optIcon);
+              iEl.style.marginRight = '6px';
+              item.appendChild(iEl);
+              item.appendChild(document.createTextNode(opt.text));
+            } else {
+              item.textContent = opt.text;
+            }
+            item.addEventListener('click', function() {
+              const lbl = trigger.querySelector('.dyb-label');
+              if (lbl) _setLabelWithIcon(lbl, opt.text, optIcon);
+              trigger.dataset.value = opt.value;
+              trigger.classList.toggle('has-value', !!opt.value);
+              trigger.classList.remove('open');
+              menu.classList.remove('open');
+              menu.querySelectorAll('.dyb-dd-option').forEach(function(o) {
+                o.classList.toggle('selected', o.dataset.value === opt.value);
+              });
+              sel.value = opt.value;
+              sel.dispatchEvent(new Event('change'));
+            });
+            menu.appendChild(item);
+          });
+        }
+        buildOptions();
+
+        // ── Trigger click → toggle ──
+        trigger.addEventListener('click', function() {
+          if (trigger.classList.contains('locked')) return;
+          const wasOpen = menu.classList.contains('open');
+          _closeAllDyb();
+          if (!wasOpen) { trigger.classList.add('open'); menu.classList.add('open'); }
+        });
+
+        // ── DOM 삽입: 원본 select 앞에 wrapper 삽입, select 를 wrapper 안으로 이동 ──
+        sel.parentNode.insertBefore(wrapper, sel);
+        sel.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
+        sel.classList.remove('dyb-select');
+        wrapper.appendChild(sel);
+        wrapper.appendChild(trigger);
+        wrapper.appendChild(menu);
+
+        // ── MutationObserver: 옵션 동적 변경 시 메뉴 재빌드 ──
+        new MutationObserver(function() {
+          buildOptions();
+          const curOpt = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+          const lbl = trigger.querySelector('.dyb-label');
+          const newVal = (curOpt && curOpt.value) ? curOpt.value : '';
+          const newLbl = (curOpt && curOpt.value) ? curOpt.text : placeholder;
+          const newIcon = (curOpt && curOpt.value && curOpt.dataset) ? (curOpt.dataset.icon || '') : '';
+          if (lbl) _setLabelWithIcon(lbl, newLbl, newIcon);
+          trigger.dataset.value = newVal;
+          trigger.classList.toggle('has-value', !!newVal);
+        }).observe(sel, { childList: true, subtree: true });
+      });
+    }
+    document.addEventListener('DOMContentLoaded', _upgradeDybSelects);
+  </script>
+  
+  <script>
+    (function() {
+      const _origFetch = window.fetch;
+      window.fetch = async function(...args) {
+        const res = await _origFetch(...args);
+        if (res.status === 401) {
+          const clone = res.clone();
+          try {
+            const data = await clone.json();
+            if (data.code === 'FORCE_LOGOUT') {
+              window.location.href = '/login?reason=force_logout';
+              return res;
+            }
+          } catch (_) {}
+        }
+        return res;
+      };
+    })();
+  </script>
+
+  <script>
+    // ── 모달 열림 시 배경 페이지 스크롤 차단 ────────────────────────────────
+    // 페이지마다 모달 open 패턴 다양 (style.display='flex', classList.add('open'),
+    // 인라인 onclick) → 호출 지점 일일이 수정하지 않고 MutationObserver 로 통합.
+    // .modal-backdrop / .dyb-modal-overlay 의 visible 상태가 하나라도 있으면
+    // body.modal-open 클래스 토글 → CSS 의 `body.modal-open { overflow: hidden }`
+    // 가 배경 스크롤 차단.
+    (function () {
+      const SELECTOR = '.modal-backdrop, .dyb-modal-overlay';
+      const isVisible = (el) => getComputedStyle(el).display !== 'none';
+      const sync = () => {
+        const anyOpen = Array.from(document.querySelectorAll(SELECTOR)).some(isVisible);
+        document.body.classList.toggle('modal-open', anyOpen);
+      };
+      const obs = new MutationObserver(sync);
+      const start = () => {
+        obs.observe(document.body, {
+          attributes: true,
+          attributeFilter: ['style', 'class'],
+          subtree: true,
+          childList: true,   // 페이지가 동적으로 모달 DOM 삽입 시도 감지
+        });
+        sync();
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+      } else {
+        start();
+      }
+    })();
+  </script>
+
+  {% if session.get('admin_auth') %}
+  <script>
+  // ── T&C 동의 모달 (첫 로그인·약관 개정 시) ─────────────────────────────
+  (function () {
+    const LANG_STORAGE_KEY = 'dyb_tos_lang';
+    let _tosState = {
+      currentTab:    'privacy',
+      currentLang:   _detectDefaultLang(),
+      currentVersions: { privacy: 0, terms: 0 },
+      articlesCache: { privacy: [], terms: [] }, // 다시 로드 안 하고 언어 전환 가능하도록
+      scrolledToEnd: { privacy: false, terms: false },
+      visited:       { privacy: true, terms: false },
+    };
+
+    function $(id) { return document.getElementById(id); }
+
+    function _detectDefaultLang() {
+      try {
+        const saved = (localStorage.getItem(LANG_STORAGE_KEY) || '').toLowerCase();
+        if (saved === 'ko' || saved === 'en') return saved;
+      } catch (_) {}
+      const nav = (navigator.language || navigator.userLanguage || '').toLowerCase();
+      return nav.startsWith('ko') ? 'ko' : 'en';
+    }
+
+    function _htmlFromArticles(articles, lang) {
+      if (!Array.isArray(articles) || articles.length === 0) {
+        return lang === 'ko'
+          ? '<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:30px 0;">아직 공개된 내용이 없습니다. 관리자에게 문의하세요.</div>'
+          : '<div style="color:var(--text-dim);font-size:13px;text-align:center;padding:30px 0;">No content published yet. Contact admin.</div>';
+      }
+      let html = '';
+      let lastChapter = null;
+      articles.forEach(a => {
+        // 언어별 필드 선택. 영어인데 번역 없으면 한국어 폴백 + 안내 배지.
+        const useEn = (lang === 'en');
+        const titleEn = (a.title_en || '').trim();
+        const contentEn = (a.content_en || '').trim();
+        const chapterTitleEn = (a.chapter_title_en || '').trim();
+        const title = useEn ? (titleEn || a.title || '') : (a.title || '');
+        const content = useEn ? (contentEn || a.content || '') : (a.content || '');
+        const chapter = useEn ? (chapterTitleEn || a.chapter_title || '') : (a.chapter_title || '');
+        const fallbackBadge = (useEn && !contentEn)
+          ? '<div class="tos-fallback-badge" style="padding:8px 12px;margin:0 0 10px;border-radius:6px;font-size:11px;"><i class="bi bi-translate mr-1"></i>English translation not available — showing Korean version.</div>'
+          : '';
+        const articleLabel = useEn ? `Article ${a.number || ''}` : `제${a.number || ''}조`;
+        if (a.chapter_number && chapter && a.chapter_number !== lastChapter) {
+          const chapterLabel = useEn ? `Chapter ${a.chapter_number} · ${_esc(chapter)}` : `제${a.chapter_number}장 · ${_esc(chapter)}`;
+          // 영어 모드인데 chapter_title_en 이 비어 한국어로 폴백된 경우 KO 배지.
+          const chapterKoBadge = (useEn && !chapterTitleEn && (a.chapter_title || '').trim())
+            ? ' <span class="tos-ko-badge" style="margin-left:6px;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.05em;" title="No English translation — showing Korean"><i class="bi bi-translate mr-1"></i>KO</span>'
+            : '';
+          html += `<div style="font-size:14px;font-weight:800;color:var(--primary);margin:20px 0 8px;padding:6px 0;border-bottom:2px solid var(--primary);">${chapterLabel}${chapterKoBadge}</div>`;
+          lastChapter = a.chapter_number;
+        }
+        html += `<div style="background:var(--surface);border:1px solid var(--outline-variant);border-radius:8px;padding:16px 20px;margin-bottom:10px;">`;
+        html += `<div style="font-size:11px;font-weight:700;color:var(--primary);background:var(--primary-soft);padding:2px 8px;border-radius:999px;display:inline-block;margin-bottom:6px;">${_esc(articleLabel)}</div>`;
+        html += `<div style="font-size:14px;font-weight:700;color:var(--text-strong);margin-bottom:8px;">${_esc(title)}</div>`;
+        html += fallbackBadge;
+        html += `<div style="font-size:13px;color:var(--text);line-height:1.7;">${content}</div>`;
+        html += `</div>`;
+      });
+      return html;
+    }
+    function _esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function _renderTabs() {
+      // 한/영 버전을 각각 사전 렌더 후 display 토글 — 언어 전환 시 innerHTML
+      // 재작성을 피해 DOM 재렌더로 인한 레이아웃 리플로우/트랜지션 끊김 방지
+      // (CLAUDE.md: ui-patterns — DOM 재렌더로 CSS 트랜지션 끊김 주의).
+      //
+      // **호출 규약**: articlesCache 가 새로 채워진 직후 1회만 호출.
+      // 이후 언어 전환은 _toggleRenderedLang 로 display 만 토글.
+      // articlesCache 를 재로드해야 하는 경우 (예: 약관 실시간 업데이트 도입)
+      // 에는 반드시 이 함수를 다시 호출해야 양쪽 언어 DOM 이 최신 내용으로
+      // 재생성된다. display 토글만으로는 stale 한 내용이 남음에 유의.
+      const buildContainer = (articles) => {
+        return ''
+          + `<div data-tos-render-ko style="display:${_tosState.currentLang === 'ko' ? 'block' : 'none'};">`
+          +   _htmlFromArticles(articles, 'ko')
+          + `</div>`
+          + `<div data-tos-render-en style="display:${_tosState.currentLang === 'en' ? 'block' : 'none'};">`
+          +   _htmlFromArticles(articles, 'en')
+          + `</div>`;
+      };
+      $('tosContentPrivacy').innerHTML = buildContainer(_tosState.articlesCache.privacy);
+      $('tosContentTerms').innerHTML   = buildContainer(_tosState.articlesCache.terms);
+    }
+
+    function _toggleRenderedLang() {
+      // _renderTabs 가 한 번만 호출된 후, 이후 언어 전환은 display 토글만.
+      document.querySelectorAll('[data-tos-render-ko]').forEach(el => {
+        el.style.display = _tosState.currentLang === 'ko' ? 'block' : 'none';
+      });
+      document.querySelectorAll('[data-tos-render-en]').forEach(el => {
+        el.style.display = _tosState.currentLang === 'en' ? 'block' : 'none';
+      });
+    }
+
+    function _applyLangLabels() {
+      const lang = _tosState.currentLang;
+      document.querySelectorAll('[data-tos-lang-ko]').forEach(el => {
+        el.style.display = lang === 'ko' ? '' : 'none';
+      });
+      document.querySelectorAll('[data-tos-lang-en]').forEach(el => {
+        el.style.display = lang === 'en' ? '' : 'none';
+      });
+      const ko = $('tosLangBtnKo'), en = $('tosLangBtnEn');
+      if (ko && en) {
+        ko.style.background = lang === 'ko' ? 'var(--primary)' : 'var(--surface)';
+        ko.style.color      = lang === 'ko' ? '#fff'           : 'var(--text-muted)';
+        en.style.background = lang === 'en' ? 'var(--primary)' : 'var(--surface)';
+        en.style.color      = lang === 'en' ? '#fff'           : 'var(--text-muted)';
+      }
+      // scroll hint 탭 이름 갱신
+      _updateScrollHintTab();
+    }
+
+    function _updateScrollHintTab() {
+      const hintKo = $('tosScrollHintTabKo');
+      const hintEn = $('tosScrollHintTabEn');
+      const tab = _tosState.currentTab;
+      if (hintKo) hintKo.textContent = tab === 'privacy' ? '개인정보 처리방침' : '이용약관';
+      if (hintEn) hintEn.textContent = tab === 'privacy' ? 'the Privacy Policy' : 'the Terms of Service';
+    }
+
+    window.tosSetLang = function (lang) {
+      if (lang !== 'ko' && lang !== 'en') return;
+      if (_tosState.currentLang === lang) return;
+      _tosState.currentLang = lang;
+      try { localStorage.setItem(LANG_STORAGE_KEY, lang); } catch (_) {}
+      _applyLangLabels();
+      // 언어 전환은 display 토글만 — _renderTabs 로 innerHTML 재작성하지 않음.
+      _toggleRenderedLang();
+      // 언어 전환 후 현재 탭 스크롤 리셋 + endOfScroll 즉시 감지 (콘텐츠 길이 변동 대응)
+      $('tosScrollArea').scrollTop = 0;
+      if (_tosState.scrolledToEnd[_tosState.currentTab]) _enableCheckbox(_tosState.currentTab);
+      else requestAnimationFrame(_checkScrollEnd);
+    };
+
+    // 약관 확인 페이지 위에는 모달을 띄우지 않음 — 사용자가 정책 읽으러 들어갔는데
+    // 같은 내용이 모달로 덮이는 UX 오류 방지. /logout·/login 도 모달 의미 없음.
+    const _TOS_SKIP_PATHS = ['/privacy', '/terms', '/logout', '/login', '/set-password', '/find-account'];
+    function _pathSkipsTos() {
+      const p = (window.location.pathname || '').replace(/\/+$/, '') || '/';
+      return _TOS_SKIP_PATHS.some(sp => p === sp || p.startsWith(sp + '/'));
+    }
+
+    async function _checkAndMaybeShow() {
+      // 2026-04-23 정책: 팝업은 두 경우에만 표시:
+      //   1) 신규 유저 (first_time=true) — 최초 동의
+      //   2) 중대 개정 재동의 (major_revision=true) — admin 이 중대 개정 토글로 저장
+      // 일반 개정은 서버가 needs_agreement=false 로 내려 팝업 없이 🔔 알림만.
+      if (_pathSkipsTos()) return;
+      try {
+        const res = await fetch('/api/auth/tos-status', { method: 'GET' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status !== 'OK' || !data.needs_agreement) return;
+
+        _tosState.currentVersions = data.current || { privacy: 0, terms: 0 };
+        _applyModalHeaderForCase(data);
+        await _loadContent();
+        $('tosAgreeModal').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+      } catch (e) {
+        // silent — UX 방해 방지. 에러 시 모달 안 뜸.
+        console.warn('[TOS] status check failed', e);
+      }
+    }
+
+    // first_time vs major_revision 에 맞춰 팝업 헤더 문구 교체.
+    // needs_agreement=true 일 때만 호출되므로 일반적으론 둘 중 하나가 true.
+    // 서버 이상으로 둘 다 false 인 방어적 케이스는 "동의 필요" 기본 문구로.
+    function _applyModalHeaderForCase(data) {
+      const ko = document.querySelector('[data-tos-title-ko]');
+      const en = document.querySelector('[data-tos-title-en]');
+      const sKo = document.querySelector('[data-tos-subtitle-ko]');
+      const sEn = document.querySelector('[data-tos-subtitle-en]');
+      if (!ko || !en || !sKo || !sEn) return;
+      if (data && data.major_revision) {
+        ko.textContent = '약관 중대 개정 — 재동의 필요';
+        en.textContent = 'Terms Significantly Updated — Re-agreement Required';
+        sKo.textContent = '개인정보 처리방침 또는 이용약관이 중대하게 개정되었습니다. 변경 내용을 확인 후 다시 동의해 주세요.';
+        sEn.textContent = 'The Privacy Policy or Terms of Service have been significantly revised. Please review the changes and re-agree.';
+      } else {
+        // first_time=true 또는 방어적 기본값 — 최초 동의 톤.
+        ko.textContent = '동의 필요';
+        en.textContent = 'Agreement Required';
+        sKo.textContent = '서비스 이용을 위해 개인정보 처리방침 및 이용약관 동의가 필요합니다.';
+        sEn.textContent = 'Please review and agree to the Privacy Policy and Terms of Service to continue.';
+      }
+    }
+
+    async function _loadContent() {
+      const hint = $('tosLoadingHint');
+      try {
+        const res = await fetch('/api/auth/tos-content', { method: 'GET' });
+        const data = await res.json();
+        if (data.status !== 'OK') throw new Error(data.message || 'Failed to load content');
+        _tosState.articlesCache.privacy = (data.privacy && data.privacy.articles) || [];
+        _tosState.articlesCache.terms   = (data.terms   && data.terms.articles)   || [];
+        _applyLangLabels();
+        _renderTabs();
+        hint.style.display = 'none';
+        window.tosSwitchTab('privacy');
+        // 콘텐츠가 짧아 스크롤 불필요한 경우 대비 — 초기 렌더 후 endOfScroll 즉시 감지.
+        requestAnimationFrame(_checkScrollEnd);
+      } catch (e) {
+        hint.textContent = 'Failed to load agreement content: ' + (e.message || e);
+        hint.style.color = 'var(--danger)';
+      }
+    }
+
+    function _checkScrollEnd() {
+      const scrollArea = $('tosScrollArea');
+      if (!scrollArea) return;
+      // 2px 여유 — 픽셀 반올림 대응. 콘텐츠가 viewport 보다 짧아서 스크롤 불가능한
+      // 경우에도 scrollHeight <= clientHeight 조건이 맞아 자동으로 atEnd=true 판정됨.
+      const atEnd = (scrollArea.scrollTop + scrollArea.clientHeight) >= (scrollArea.scrollHeight - 2);
+      if (atEnd && !_tosState.scrolledToEnd[_tosState.currentTab]) {
+        _tosState.scrolledToEnd[_tosState.currentTab] = true;
+        _enableCheckbox(_tosState.currentTab);
+      }
+    }
+
+    function _enableCheckbox(tab) {
+      const chk = $('tosChk' + (tab === 'privacy' ? 'Privacy' : 'Terms'));
+      const label = $('tosChk' + (tab === 'privacy' ? 'Privacy' : 'Terms') + 'Label');
+      if (chk) chk.disabled = false;
+      if (label) label.style.opacity = '1';
+      const mark = $('tos' + (tab === 'privacy' ? 'Privacy' : 'Terms') + 'CheckMark');
+      if (mark) mark.style.display = 'inline';
+    }
+
+    // 탭 전환 애니메이션 — 현재 탭 fade-out(slide-left) → 내용 교체 → 새 탭 fade-in
+    // (slide-right). 사용자가 "진행 중" 을 체감하도록. animate=false 면 즉시 전환
+    // (초기 로드 등).
+    window.tosSwitchTab = function (tab, opts) {
+      opts = opts || {};
+      const animate = opts.animate !== false;
+      if (tab !== 'privacy' && tab !== 'terms') return;
+      const prevTab = _tosState.currentTab;
+
+      _tosState.currentTab = tab;
+      _tosState.visited[tab] = true;
+
+      // 동일 탭 재호출 — 애니메이션 없이 초기 표시만 확인 (초기 로드용).
+      if (prevTab === tab) {
+        const self = $('tosContent' + (tab === 'privacy' ? 'Privacy' : 'Terms'));
+        self.style.display = 'block';
+        self.style.opacity = '1';
+        self.style.transform = 'translateX(0)';
+        const other = $('tosContent' + (tab === 'privacy' ? 'Terms' : 'Privacy'));
+        other.style.display = 'none';
+        _updateScrollHintTab();
+        $('tosScrollArea').scrollTop = 0;
+        if (_tosState.scrolledToEnd[tab]) _enableCheckbox(tab);
+        else requestAnimationFrame(_checkScrollEnd);
+        return;
+      }
+
+      // 탭 버튼 스타일 전환
+      $('tosTabPrivacy').style.color = tab === 'privacy' ? 'var(--primary)' : 'var(--text-muted)';
+      $('tosTabPrivacy').style.background = tab === 'privacy' ? 'var(--surface)' : 'transparent';
+      $('tosTabPrivacy').style.borderBottom = tab === 'privacy' ? '3px solid var(--primary)' : '3px solid transparent';
+      $('tosTabTerms').style.color = tab === 'terms' ? 'var(--primary)' : 'var(--text-muted)';
+      $('tosTabTerms').style.background = tab === 'terms' ? 'var(--surface)' : 'transparent';
+      $('tosTabTerms').style.borderBottom = tab === 'terms' ? '3px solid var(--primary)' : '3px solid transparent';
+      _updateScrollHintTab();
+
+      const prevEl = $('tosContent' + (prevTab === 'privacy' ? 'Privacy' : 'Terms'));
+      const nextEl = $('tosContent' + (tab === 'privacy'    ? 'Privacy' : 'Terms'));
+      // 방향: privacy → terms 는 오른쪽에서 들어옴, terms → privacy 는 왼쪽에서 들어옴
+      const forward = (prevTab === 'privacy' && tab === 'terms');
+      const enterFrom = forward ? '12px' : '-12px';
+      const exitTo    = forward ? '-12px' : '12px';
+
+      const finalizeSwitch = () => {
+        // 스크롤 리셋 + endOfScroll 즉시 감지 (짧은 콘텐츠 대응)
+        $('tosScrollArea').scrollTop = 0;
+        if (_tosState.scrolledToEnd[tab]) _enableCheckbox(tab);
+        else requestAnimationFrame(_checkScrollEnd);
+      };
+
+      if (!animate) {
+        prevEl.style.display = 'none';
+        nextEl.style.display = 'block';
+        nextEl.style.opacity = '1';
+        nextEl.style.transform = 'translateX(0)';
+        finalizeSwitch();
+        return;
+      }
+
+      // Phase 1 — 현재 탭 fade-out
+      prevEl.style.opacity = '0';
+      prevEl.style.transform = `translateX(${exitTo})`;
+      setTimeout(() => {
+        prevEl.style.display = 'none';
+        // Phase 2 — 새 탭 초기 위치 → fade-in
+        nextEl.style.opacity = '0';
+        nextEl.style.transform = `translateX(${enterFrom})`;
+        nextEl.style.display = 'block';
+        // 다음 프레임에 trigger 해야 transition 적용됨
+        requestAnimationFrame(() => {
+          nextEl.style.opacity = '1';
+          nextEl.style.transform = 'translateX(0)';
+        });
+        finalizeSwitch();
+      }, 180);
+    };
+
+    window.tosUpdateAgreeButton = function () {
+      const chkP = $('tosChkPrivacy');
+      const chkT = $('tosChkTerms');
+      const btn = $('tosAgreeBtn');
+      const can = chkP.checked && chkT.checked;
+      btn.disabled = !can;
+      btn.style.opacity = can ? '1' : '.4';
+      btn.style.cursor = can ? 'pointer' : 'not-allowed';
+
+      // 체크된 라벨 시각 강조
+      const labP = $('tosChkPrivacyLabel');
+      const labT = $('tosChkTermsLabel');
+      if (labP) {
+        labP.style.borderColor = chkP.checked ? 'var(--primary)'      : 'var(--outline-variant)';
+        labP.style.background  = chkP.checked ? 'var(--primary-soft)' : 'var(--surface-low)';
+      }
+      if (labT) {
+        labT.style.borderColor = chkT.checked ? 'var(--primary)'      : 'var(--outline-variant)';
+        labT.style.background  = chkT.checked ? 'var(--primary-soft)' : 'var(--surface-low)';
+      }
+
+      // UX 개선: 개인정보 체크박스가 방금 체크됐고, 아직 terms 탭을 보지 않은
+      // 사용자라면 자동으로 이용약관 탭으로 부드럽게 전환 — "다음 단계" 를
+      // 명확히 안내. 이미 terms 방문/체크됐거나 privacy 를 해제한 경우엔 전환
+      // 하지 않음 (사용자 의도를 방해하지 않기 위함).
+      if (chkP.checked && !chkT.checked && _tosState.currentTab === 'privacy') {
+        // 체크 애니메이션이 눈에 보이도록 짧은 딜레이 후 전환.
+        clearTimeout(_tosState._autoSwitchTimer);
+        _tosState._autoSwitchTimer = setTimeout(() => {
+          if ($('tosChkPrivacy').checked && _tosState.currentTab === 'privacy') {
+            window.tosSwitchTab('terms');
+          }
+        }, 350);
+      }
+    };
+
+    // 현재 언어에 맞는 메시지 선택 — alert/confirm 에서 사용.
+    function _tosMsg(ko, en) {
+      return _tosState.currentLang === 'ko' ? ko : en;
+    }
+
+    window.tosAgree = async function () {
+      const btn = $('tosAgreeBtn');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const processingLabel = _tosMsg('처리 중...', 'Processing...');
+      btn.innerHTML = `<span style="display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;vertical-align:middle;"></span>${_esc(processingLabel)}`;
+      try {
+        const res = await fetch('/api/auth/agree-tos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({
+            privacy_version: _tosState.currentVersions.privacy,
+            terms_version:   _tosState.currentVersions.terms,
+            agreed_language: _tosState.currentLang,
+          }),
+        });
+        const data = await res.json();
+        if (data.status !== 'OK') {
+          if (data.code === 'VERSION_STALE') {
+            alert(_tosMsg(
+              '약관이 업데이트되었습니다. 새로고침합니다...',
+              'The agreement documents have been updated. Reloading...'
+            ));
+            window.location.reload();
+            return;
+          }
+          throw new Error(data.message || 'Failed');
+        }
+        $('tosAgreeModal').style.display = 'none';
+        document.body.style.overflow = '';
+      } catch (e) {
+        btn.disabled = false;
+        const resumeLabel = _tosMsg('동의하고 계속', 'Agree & Continue');
+        btn.innerHTML = `<i class="bi bi-check"></i> ${_esc(resumeLabel)}`;
+        const errDetail = e && e.message ? e.message : String(e || '');
+        alert(_tosMsg(
+          '동의 기록에 실패했습니다: ' + errDetail,
+          'Failed to record agreement: ' + errDetail
+        ));
+      }
+    };
+
+    window.tosDecline = function () {
+      const msg = _tosMsg(
+        '동의하지 않고 로그아웃하시겠습니까?',
+        'Decline the agreement and sign out?'
+      );
+      if (!confirm(msg)) return;
+      window.location.href = '/logout';
+    };
+
+    // 초기화: DOM 로드 후 + 스크롤 이벤트 바인드
+    function _init() {
+      const scrollArea = $('tosScrollArea');
+      if (scrollArea) {
+        scrollArea.addEventListener('scroll', _checkScrollEnd);
+      }
+      _checkAndMaybeShow();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', _init);
+    } else {
+      _init();
+    }
+  })();
+  </script>
+  {% endif %}
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

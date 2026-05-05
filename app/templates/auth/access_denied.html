@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>NHR Portal - Access Denied</title>
+
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}"/>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.45s ease forwards; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%       { transform: translateX(-6px); }
+            40%       { transform: translateX(6px); }
+            60%       { transform: translateX(-4px); }
+            80%       { transform: translateX(4px); }
+        }
+        .shake { animation: shake 0.5s ease 0.2s; }
+    </style>
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface":                  "#f7f9fb",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-low":    "#f2f4f6",
+                        "on-surface":               "#191c1e",
+                        "on-surface-variant":       "#5b403d",
+                        "primary":                  "#870009",
+                        "primary-container":        "#b01116",
+                        "on-primary":               "#ffffff",
+                        "outline":                  "#906f6c",
+                        "outline-variant":          "#e4beb9",
+                        "error":                    "#ba1a1a",
+                    },
+                    fontFamily: { "headline": ["Inter"], "body": ["Inter"] },
+                },
+            },
+        }
+    </script>
+</head>
+
+<body class="bg-surface text-on-surface min-h-screen flex flex-col">
+
+    <main class="flex-grow flex items-center justify-center px-4 py-16">
+        <div class="w-full max-w-md fade-in">
+
+            <!-- Card -->
+            <div class="bg-surface-container-lowest rounded-2xl relative overflow-hidden p-8
+                        border-2 border-outline-variant/50
+                        shadow-[0_35px_80px_rgba(135,0,9,0.10)]">
+
+                <!-- DYB accent bar -->
+                <div class="absolute top-0 left-0 w-full h-[4px]"
+                     style="background: linear-gradient(90deg, #870009 0%, #b01116 60%, #c0392b 100%)"></div>
+
+                <!-- Logo -->
+                <div class="flex justify-center mb-6">
+                    <div class="w-32 overflow-hidden">
+                        <img src="{{ url_for('static', filename='logo.png') }}" alt="DYB Logo"
+                             class="w-full h-auto object-contain">
+                    </div>
+                </div>
+
+                <!-- Icon + Title -->
+                <div class="flex flex-col items-center text-center mb-6">
+                    <div class="shake w-20 h-20 rounded-full flex items-center justify-center mb-4"
+                         style="background:rgba(220,38,38,.10);border:2px solid rgba(220,38,38,.45)">
+                        <i class="bi bi-lock-fill text-error text-[44px]"></i>
+                    </div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-on-surface mb-1">
+                        Admin Access Required
+                    </h1>
+                    <p class="text-sm text-on-surface-variant">
+                        You don't have permission to view this page.
+                    </p>
+                </div>
+
+                <!-- Info box -->
+                <div class="rounded-xl px-5 py-4 mb-6 text-sm"
+                     style="background:var(--primary-soft);border:1.5px solid rgba(176,17,22,.30)">
+                    {% if user_name %}
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="bi bi-person-fill text-[16px] text-primary"></i>
+                        <span class="font-semibold text-on-surface-variant">Logged in as:</span>
+                        <span class="font-bold text-on-surface">{{ user_name }}</span>
+                        {% if user_role %}
+                        <span class="ml-auto text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                              style="background:var(--primary)">{{ user_role }}</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    <p class="text-on-surface-variant leading-relaxed">
+                        This page is restricted to <strong class="text-primary">Admin</strong> only.
+                        If you believe you should have access, please contact the portal admin.
+                    </p>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex flex-col gap-3">
+                    <a href="/"
+                       class="w-full h-[50px] flex items-center justify-center gap-2 rounded-xl
+                              font-bold text-on-primary text-sm shadow-md transition-all
+                              hover:opacity-90 hover:-translate-y-0.5"
+                       style="background:linear-gradient(135deg,#870009 0%,#b01116 100%)">
+                        <i class="bi bi-house-fill text-[18px]"></i>
+                        Go to Home
+                    </a>
+                    <a href="/logout?next=/login"
+                       class="w-full h-[46px] flex items-center justify-center gap-2 rounded-xl
+                              font-bold text-sm border-2 transition-all
+                              hover:border-primary hover:text-primary"
+                       style="border-color:var(--tw-color-outline-variant,#e4beb9);color:#5b403d">
+                        <i class="bi bi-box-arrow-in-right text-[18px]"></i>
+                        Sign in with a different account
+                    </a>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <p class="mt-6 text-center text-xs text-on-surface-variant/60">
+                NHR Portal &nbsp;·&nbsp; DYB Education
+            </p>
+        </div>
+    </main>
+</body>
+</html>

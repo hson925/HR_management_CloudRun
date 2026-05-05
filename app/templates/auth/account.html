@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>NHR Portal - Account Settings</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}"/>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* 다크 모드 시맨틱 변형 (계정 삭제 경고 등) */
+        html[data-theme="dark"] .bg-red-50 { background-color: rgba(220,38,38,.12) !important; }
+        html[data-theme="dark"] .border-red-200 { border-color: rgba(220,38,38,.40) !important; }
+        html[data-theme="dark"] .text-red-700,
+        html[data-theme="dark"] .text-red-600 { color: #fca5a5 !important; }
+        .btn-primary { transition: all 0.2s ease; }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(135, 0, 9, 0.35);
+            filter: brightness(1.08);
+        }
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0px) scale(0.98);
+            box-shadow: 0 2px 8px rgba(135, 0, 9, 0.2);
+        }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-danger { transition: all 0.2s ease; }
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(186, 26, 26, 0.35);
+            filter: brightness(1.08);
+        }
+        .btn-danger:active:not(:disabled) { transform: translateY(0px) scale(0.98); }
+        .btn-danger:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-menu { transition: all 0.2s ease; }
+        .btn-menu:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+        .btn-menu:active { transform: translateY(0px) scale(0.99); }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
+    </style>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface": "#f7f9fb", "on-surface": "#191c1e", "primary": "#870009",
+                        "on-primary": "#ffffff", "primary-container": "#b01116",
+                        "surface-container-lowest": "#ffffff", "surface-container-low": "#f2f4f6",
+                        "surface-container": "#eceef0", "on-surface-variant": "#5b403d",
+                        "outline": "#906f6c", "outline-variant": "#e4beb9", "error": "#ba1a1a"
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col relative">
+
+    <a href="/" class="absolute top-5 left-5 sm:top-8 sm:left-8 flex items-center gap-2 text-on-surface-variant/70 hover:text-primary transition-all p-2 rounded-xl hover:bg-surface-container-low group z-50 focus:outline-none">
+        <i class="bi bi-arrow-left text-[28px] group-hover:-translate-x-1 transition-transform"></i>
+        <span class="text-sm font-bold tracking-tight hidden sm:block mt-0.5">Back</span>
+    </a>
+
+    <main class="flex-grow flex items-center justify-center px-4 py-6">
+        <div class="w-full max-w-md">
+            <div class="bg-surface-container-lowest rounded-xl relative overflow-hidden p-6 sm:p-8 border-2 border-outline/30 shadow-[0_35px_80px_rgba(25,28,30,0.12)]">
+                <div class="absolute top-0 left-0 w-full h-[3px] bg-primary"></div>
+
+                <div class="flex flex-col items-center mb-6">
+                    <div class="flex items-center justify-center mb-2 w-40 overflow-hidden">
+                        <img src="https://lh3.googleusercontent.com/d/1tZlt5Hqgz9bTgp1odWAYW7rscMOI5TLp" alt="DYB Logo" class="w-full h-auto object-contain">
+                    </div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-on-surface mb-1">ACCOUNT SETTINGS</h1>
+                </div>
+
+                <!-- 메뉴 선택 -->
+                <div id="menu-screen">
+                    <div class="flex flex-col gap-3">
+                        {% if session.get('login_type') != 'google' %}
+                        <button onclick="showSection('email-section')" class="btn-menu w-full h-[56px] bg-surface-container-low border-2 border-gray-200 hover:border-primary rounded-lg flex items-center gap-4 px-5 group">
+                            <i class="bi bi-envelope-fill text-gray-400 group-hover:text-primary transition-colors"></i>
+                            <div class="text-left">
+                                <p class="text-sm font-bold text-on-surface">Change Email</p>
+                                <p class="text-xs text-gray-400">Update your login email address</p>
+                            </div>
+                            <i class="bi bi-chevron-right text-gray-300 ml-auto group-hover:text-primary transition-colors"></i>
+                        </button>
+                        {% endif %}
+                        {% if session.get('login_type') != 'google' %}
+                        <button onclick="showSection('password-section')" class="btn-menu w-full h-[56px] bg-surface-container-low border-2 border-gray-200 hover:border-primary rounded-lg flex items-center gap-4 px-5 group">
+                            <i class="bi bi-key-fill text-gray-400 group-hover:text-primary transition-colors"></i>
+                            <div class="text-left">
+                                <p class="text-sm font-bold text-on-surface">Change Password</p>
+                                <p class="text-xs text-gray-400">Update your account password</p>
+                            </div>
+                            <i class="bi bi-chevron-right text-gray-300 ml-auto group-hover:text-primary transition-colors"></i>
+                        </button>
+                        {% endif %}
+                        {% if session.get('login_type') == 'google' %}
+                        <button onclick="showSection('google-section')" class="btn-menu w-full h-[56px] bg-surface-container-low border-2 border-gray-200 hover:border-primary rounded-lg flex items-center gap-4 px-5 group">
+                            <i class="bi bi-google text-gray-400 group-hover:text-primary transition-colors"></i>
+                            <div class="text-left">
+                                <p class="text-sm font-bold text-on-surface">Change Google Account</p>
+                                <p class="text-xs text-gray-400">Switch to a different Google account</p>
+                            </div>
+                            <i class="bi bi-chevron-right text-gray-300 ml-auto group-hover:text-primary transition-colors"></i>
+                        </button>
+                        {% endif %}
+
+                        <button onclick="showSection('delete-section')" class="btn-menu w-full h-[56px] bg-surface-container-low border-2 border-red-100 hover:border-error rounded-lg flex items-center gap-4 px-5 group">
+                            <i class="bi bi-person-x-fill text-red-300 group-hover:text-error transition-colors"></i>
+                            <div class="text-left">
+                                <p class="text-sm font-bold text-error">Delete Account</p>
+                                <p class="text-xs text-gray-400">Permanently remove your account</p>
+                            </div>
+                            <i class="bi bi-chevron-right text-gray-300 ml-auto group-hover:text-error transition-colors"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 이메일 변경 -->
+                <div id="email-section" class="hidden">
+                    <button onclick="backToMenu()" class="flex items-center gap-1 text-xs text-gray-400 hover:text-primary transition-colors mb-5" type="button">
+                        <i class="bi bi-arrow-left text-[16px]"></i> Back
+                    </button>
+                    <div id="email-step1">
+                        <p class="text-sm text-gray-500 mb-4 text-center">We'll send a verification code to your current email.</p>
+                        <button id="btn-send-otp-email" onclick="sendOtp('email')" class="btn-primary w-full h-[52px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Send Verification Code</span>
+                        </button>
+                    </div>
+                    <div id="email-step2" class="hidden">
+                        <div id="email-error" class="hidden mb-4 text-center">
+                            <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                                <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                                <span id="email-error-text"></span>
+                            </p>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Verification Code</label>
+                                <p class="text-xs text-gray-400 ml-1 mb-1">Sent to your current email</p>
+                                <input id="email-otp" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" maxlength="6" type="text" onkeydown="if(event.key==='Enter') changeEmail()"/>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">New Email</label>
+                                <input id="new-email" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none" placeholder="Enter new email" type="email" onkeydown="if(event.key==='Enter') changeEmail()"/>
+                            </div>
+                        </div>
+                        <button id="btn-change-email" onclick="changeEmail()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Send Code to New Email</span>
+                        </button>
+                    </div>
+
+                    <!-- 새 이메일 인증 단계 -->
+                    <div id="email-step3" class="hidden">
+                        <div id="email-step3-error" class="hidden mb-4 text-center">
+                            <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                                <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                                <span id="email-step3-error-text"></span>
+                            </p>
+                        </div>
+                        <p class="text-sm text-center text-gray-500 mb-4">Enter the verification code sent to your <span class="font-bold text-primary">new email</span>.</p>
+                        <input id="new-email-otp" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" maxlength="6" type="text" onkeydown="if(event.key==='Enter') verifyNewEmail()"/>
+                        <button id="btn-verify-new-email" onclick="verifyNewEmail()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Confirm & Update Email</span>
+                        </button>
+                    </div>
+                    <div id="email-success" class="hidden text-center mt-4">
+                        <i class="bi bi-check-circle-fill text-green-500 text-[48px]"></i>
+                        <p class="text-sm font-bold text-green-600 mt-2">Email updated successfully!</p>
+                        <button onclick="window.location.href='/'" class="btn-primary w-full mt-4 h-[48px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg" type="button">Go to Dashboard</button>
+                    </div>
+                </div>
+
+                <!-- 비밀번호 변경 -->
+                <div id="password-section" class="hidden">
+                    <button onclick="backToMenu()" class="flex items-center gap-1 text-xs text-gray-400 hover:text-primary transition-colors mb-5" type="button">
+                        <i class="bi bi-arrow-left text-[16px]"></i> Back
+                    </button>
+                    <div id="pw-step1">
+                        <p class="text-sm text-gray-500 mb-4 text-center">We'll send a verification code to your current email.</p>
+                        <button id="btn-send-otp-pw" onclick="sendOtp('password')" class="btn-primary w-full h-[52px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Send Verification Code</span>
+                        </button>
+                    </div>
+                    <div id="pw-step2" class="hidden">
+                        <div id="pw-error" class="hidden mb-4 text-center">
+                            <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                                <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                                <span id="pw-error-text"></span>
+                            </p>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Verification Code</label>
+                                <input id="pw-otp" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" maxlength="6" type="text" onkeydown="if(event.key==='Enter') changePassword()"/>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">New Password</label>
+                                <input id="new-password" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none" placeholder="Min. 8 characters" type="password" onkeydown="if(event.key==='Enter') changePassword()"/>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Confirm Password</label>
+                                <input id="confirm-password" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none" placeholder="Re-enter password" type="password" onkeydown="if(event.key==='Enter') changePassword()"/>
+                            </div>
+                        </div>
+                        <button id="btn-change-pw" onclick="changePassword()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Update Password</span>
+                        </button>
+                    </div>
+                    <div id="pw-success" class="hidden text-center mt-4">
+                        <i class="bi bi-check-circle-fill text-green-500 text-[48px]"></i>
+                        <p class="text-sm font-bold text-green-600 mt-2">Password updated successfully!</p>
+                        <button onclick="window.location.href='/'" class="btn-primary w-full mt-4 h-[48px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg" type="button">Go to Dashboard</button>
+                    </div>
+                </div>
+
+                <!-- 구글 계정 변경 -->
+                <div id="google-section" class="hidden">
+                    <button onclick="backToMenu()" class="flex items-center gap-1 text-xs text-gray-400 hover:text-primary transition-colors mb-5" type="button">
+                        <i class="bi bi-arrow-left text-[16px]"></i> Back
+                    </button>
+                    <div id="google-step1">
+                        <p class="text-sm text-gray-500 mb-4 text-center">We'll send a verification code to your current email before switching accounts.</p>
+                        <button id="btn-send-otp-google" onclick="sendOtp('google')" class="btn-primary w-full h-[52px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Send Verification Code</span>
+                        </button>
+                    </div>
+                    <div id="google-step2" class="hidden">
+                        <div id="google-error" class="hidden mb-4 text-center">
+                            <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                                <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                                <span id="google-error-text"></span>
+                            </p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Verification Code</label>
+                            <p class="text-xs text-gray-400 ml-1 mb-1">Sent to your current email</p>
+                            <input id="google-otp" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" maxlength="6" type="text" onkeydown="if(event.key==='Enter') confirmGoogleOtp()"/>
+                        </div>
+                        <button id="btn-confirm-google-otp" onclick="confirmGoogleOtp()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Confirm & Select New Google Account</span>
+                        </button>
+                    </div>
+
+                    <!-- 새 구글 이메일 인증 단계 -->
+                    <div id="google-step3" class="hidden">
+                        <div id="google-step3-error" class="hidden mb-4 text-center">
+                            <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                                <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                                <span id="google-step3-error-text"></span>
+                            </p>
+                        </div>
+                        <p class="text-sm text-center text-gray-500 mb-4">Enter the verification code sent to your <span class="font-bold text-primary">new Google account email</span>.</p>
+                        <input id="new-google-otp" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" maxlength="6" type="text" onkeydown="if(event.key==='Enter') verifyNewGoogle()"/>
+                        <button id="btn-verify-new-google" onclick="verifyNewGoogle()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Confirm & Update Google Account</span>
+                        </button>
+                    </div>
+
+                    <div id="google-success" class="hidden text-center mt-4">
+                        <i class="bi bi-check-circle-fill text-green-500 text-[48px]"></i>
+                        <p class="text-sm font-bold text-green-600 mt-2">Google account updated successfully!</p>
+                        <button onclick="window.location.href='/'" class="btn-primary w-full mt-4 h-[48px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg" type="button">Go to Dashboard</button>
+                    </div>
+                </div>
+
+                <!-- 계정 탈퇴 -->
+                <div id="delete-section" class="hidden">
+                    <button onclick="backToMenu()" class="flex items-center gap-1 text-xs text-gray-400 hover:text-primary transition-colors mb-5" type="button">
+                        <i class="bi bi-arrow-left text-[16px]"></i> Back
+                    </button>
+                    <div id="delete-step1">
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                            <p class="text-sm font-bold text-error flex items-center gap-2 mb-1">
+                                <i class="bi bi-exclamation-triangle-fill text-[18px]"></i> Warning
+                            </p>
+                            <p class="text-xs text-gray-600">This action is permanent and cannot be undone. Your account and all associated data will be deleted.</p>
+                        </div>
+                        <button id="btn-send-otp-delete" onclick="sendOtp('delete')" class="btn-danger w-full h-[52px] bg-error text-white font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Send Verification Code</span>
+                        </button>
+                    </div>
+                    <div id="delete-step2" class="hidden">
+                        <div id="delete-error" class="hidden mb-4 text-center">
+                            <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                                <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                                <span id="delete-error-text"></span>
+                            </p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1 mb-1">Verification Code</label>
+                            <input id="delete-otp" class="w-full px-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" maxlength="6" type="text" onkeydown="if(event.key==='Enter') deleteAccount()"/>
+                        </div>
+                        <button id="btn-delete" onclick="deleteAccount()" class="btn-danger w-full h-[52px] mt-4 bg-error text-white font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Delete My Account</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function btnLoading(btn) {
+            btn.disabled = true;
+            btn.dataset.originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat spinning text-[22px]"></i>';
+        }
+        function btnReset(btn) {
+            btn.disabled = false;
+            if (btn.dataset.originalHtml) {
+                btn.innerHTML = btn.dataset.originalHtml;
+                delete btn.dataset.originalHtml;
+            }
+        }
+
+        function showSection(id) {
+            document.getElementById('menu-screen').classList.add('hidden');
+            ['email-section', 'password-section', 'delete-section', 'google-section'].forEach(s => {
+                document.getElementById(s).classList.add('hidden');
+            });
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function backToMenu() {
+            ['email-section', 'password-section', 'delete-section', 'google-section'].forEach(s => {
+                document.getElementById(s).classList.add('hidden');
+            });
+            document.getElementById('menu-screen').classList.remove('hidden');
+        }
+
+        async function sendOtp(type) {
+            const btnId = type === 'email' ? 'btn-send-otp-email' : type === 'password' ? 'btn-send-otp-pw' : type === 'google' ? 'btn-send-otp-google' : 'btn-send-otp-delete';
+            const btn = document.getElementById(btnId);
+            btnLoading(btn);
+            const response = await fetch('/api/auth/account/send-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const data = await response.json();
+            if (data.status === 'OK') {
+                if (type === 'email') {
+                    document.getElementById('email-step1').classList.add('hidden');
+                    document.getElementById('email-step2').classList.remove('hidden');
+                } else if (type === 'password') {
+                    document.getElementById('pw-step1').classList.add('hidden');
+                    document.getElementById('pw-step2').classList.remove('hidden');
+                } else if (type === 'delete') {
+                    document.getElementById('delete-step1').classList.add('hidden');
+                    document.getElementById('delete-step2').classList.remove('hidden');
+                } else if (type === 'google') {
+                    document.getElementById('google-step1').classList.add('hidden');
+                    document.getElementById('google-step2').classList.remove('hidden');
+                }
+            } else {
+                alert(data.message || 'Failed to send OTP.');
+                btnReset(btn);
+            }
+        }
+
+        async function changeEmail() {
+            const otp = document.getElementById('email-otp').value.trim();
+            const newEmail = document.getElementById('new-email').value.trim();
+            if (!otp || !newEmail) { showSectionError('email', 'Please fill in all fields.'); return; }
+
+            const btn = document.getElementById('btn-change-email');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/account/change-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp, newEmail })
+            });
+            const data = await response.json();
+            if (data.status === 'NEW_EMAIL_VERIFY_REQUIRED') {
+                document.getElementById('email-step2').classList.add('hidden');
+                document.getElementById('email-step3').classList.remove('hidden');
+            } else {
+                showSectionError('email', data.message || 'Failed to update email.');
+                btnReset(btn);
+            }
+        }
+
+        async function verifyNewEmail() {
+            const otp = document.getElementById('new-email-otp').value.trim();
+            if (!otp) {
+                document.getElementById('email-step3-error-text').textContent = 'Please enter the verification code.';
+                document.getElementById('email-step3-error').classList.remove('hidden');
+                return;
+            }
+            const btn = document.getElementById('btn-verify-new-email');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/account/verify-new-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp })
+            });
+            const data = await response.json();
+            if (data.status === 'OK') {
+                document.getElementById('email-step3').classList.add('hidden');
+                document.getElementById('email-success').classList.remove('hidden');
+            } else {
+                document.getElementById('email-step3-error-text').textContent = data.message || 'Invalid OTP.';
+                document.getElementById('email-step3-error').classList.remove('hidden');
+                btnReset(btn);
+            }
+        }
+
+        async function changePassword() {
+            const otp = document.getElementById('pw-otp').value.trim();
+            const newPassword = document.getElementById('new-password').value;
+            const confirm = document.getElementById('confirm-password').value;
+            if (!otp || !newPassword || !confirm) { showSectionError('pw', 'Please fill in all fields.'); return; }
+            if (newPassword !== confirm) { showSectionError('pw', 'Passwords do not match.'); return; }
+            if (newPassword.length < 8) { showSectionError('pw', 'Password must be at least 8 characters.'); return; }
+
+            const btn = document.getElementById('btn-change-pw');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/account/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp, newPassword })
+            });
+            const data = await response.json();
+            if (data.status === 'OK') {
+                document.getElementById('pw-step2').classList.add('hidden');
+                document.getElementById('pw-success').classList.remove('hidden');
+            } else {
+                showSectionError('pw', data.message || 'Failed to update password.');
+                btnReset(btn);
+            }
+        }
+
+        async function deleteAccount() {
+            const otp = document.getElementById('delete-otp').value.trim();
+            if (!otp) { showSectionError('delete', 'Please enter the verification code.'); return; }
+
+            const btn = document.getElementById('btn-delete');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/account/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp })
+            });
+            const data = await response.json();
+            if (data.status === 'OK') {
+                window.location.href = data.redirect;
+            } else {
+                showSectionError('delete', data.message || 'Failed to delete account.');
+                btnReset(btn);
+            }
+        }
+
+        function showSectionError(prefix, msg) {
+            document.getElementById(`${prefix}-error-text`).textContent = msg;
+            document.getElementById(`${prefix}-error`).classList.remove('hidden');
+        }
+    </script>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyREDACTED_FIREBASE_WEB_API_KEY",
+            authDomain: "premium-arc-490609-m4.firebaseapp.com",
+            projectId: "premium-arc-490609-m4",
+            storageBucket: "premium-arc-490609-m4.firebasestorage.app",
+            messagingSenderId: "000000000000",
+            appId: "1:000000000000:web:0b908e825a174e5ba6812d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        window.confirmGoogleOtp = async function() {
+            const otp = document.getElementById('google-otp').value.trim();
+            if (!otp) {
+                showSectionError('google', 'Please enter the verification code.');
+                return;
+            }
+            // 커스텀 모달 표시
+            document.getElementById('google-confirm-modal').classList.remove('hidden');
+        }
+
+        window.proceedGoogleChange = async function() {
+            document.getElementById('google-confirm-modal').classList.add('hidden');
+            const otp = document.getElementById('google-otp').value.trim();
+            const btn = document.getElementById('btn-confirm-google-otp');
+            btn.disabled = true;
+            btn.dataset.originalHtml = btn.innerHTML;
+            btn.innerHTML = '<span style="animation: spin 0.8s linear infinite; display:inline-block">⟳</span>';
+
+            try {
+                const provider = new GoogleAuthProvider();
+                provider.setCustomParameters({ prompt: 'select_account' });
+                const result = await signInWithPopup(auth, provider);
+                const idToken = await result.user.getIdToken();
+
+                const response = await fetch('/api/auth/account/change-google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ otp, idToken })
+                });
+                const data = await response.json();
+
+                if (data.status === 'NEW_GOOGLE_VERIFY_REQUIRED') {
+                    document.getElementById('google-step2').classList.add('hidden');
+                    document.getElementById('google-step3').classList.remove('hidden');
+                } else {
+                    showSectionError('google', data.message || 'Failed to change Google account.');
+                    btn.disabled = false;
+                    btn.innerHTML = btn.dataset.originalHtml;
+                }
+            } catch (e) {
+                showSectionError('google', 'Google sign-in failed. Please try again.');
+                btn.disabled = false;
+                btn.innerHTML = btn.dataset.originalHtml;
+                console.error(e);
+            }
+        }
+
+        window.verifyNewGoogle = async function() {
+            const otp = document.getElementById('new-google-otp').value.trim();
+            if (!otp) {
+                document.getElementById('google-step3-error-text').textContent = 'Please enter the verification code.';
+                document.getElementById('google-step3-error').classList.remove('hidden');
+                return;
+            }
+            const btn = document.getElementById('btn-verify-new-google');
+            btn.disabled = true;
+            btn.dataset.originalHtml = btn.innerHTML;
+            btn.innerHTML = '<span style="animation: spin 0.8s linear infinite; display:inline-block">⟳</span>';
+
+            const response = await fetch('/api/auth/account/verify-new-google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp })
+            });
+            const data = await response.json();
+
+            if (data.status === 'OK') {
+                document.getElementById('google-step3').classList.add('hidden');
+                document.getElementById('google-success').classList.remove('hidden');
+            } else {
+                document.getElementById('google-step3-error-text').textContent = data.message || 'Invalid OTP.';
+                document.getElementById('google-step3-error').classList.remove('hidden');
+                btn.disabled = false;
+                btn.innerHTML = btn.dataset.originalHtml;
+            }
+        }
+    </script>
+
+    <!-- 구글 계정 변경 확인 모달 -->
+    <div id="google-confirm-modal" class="dyb-modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-outline/20 relative">
+            <div class="absolute top-0 left-0 w-full h-[3px] bg-primary rounded-t-xl"></div>
+            <div class="flex flex-col items-center mb-5">
+                <i class="bi bi-google text-primary text-[48px] mb-2"></i>
+                <h2 class="text-lg font-extrabold text-on-surface">Select New Google Account</h2>
+                <p class="text-sm text-center text-gray-500 mt-2 leading-relaxed">A Google account selection window will appear next.<br><span class="font-bold text-primary">Please select the NEW Google account</span> you want to use going forward.</p>
+            </div>
+            <button onclick="proceedGoogleChange()" class="btn-primary w-full h-[52px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md mb-2" type="button">
+                <i class="bi bi-check-circle-fill text-[18px] mr-1"></i>
+                <span class="text-base tracking-tight">Continue</span>
+            </button>
+            <button onclick="document.getElementById('google-confirm-modal').classList.add('hidden')" class="w-full mt-1 text-sm text-gray-400 hover:text-gray-600 transition-colors" type="button">Cancel</button>
+        </div>
+    </div>
+</body>
+</html>

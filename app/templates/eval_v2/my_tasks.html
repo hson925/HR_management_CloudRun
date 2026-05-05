@@ -1,0 +1,152 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | My Tasks{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mt-card {
+    background: var(--surface-lowest);
+    border: 1.5px solid var(--outline-variant);
+    border-radius: 8px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s, transform .15s;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .mt-card:hover { border-color: var(--primary); box-shadow: 0 4px 12px rgba(0,0,0,.06); transform: translateY(-1px); }
+  html[data-theme="dark"] .mt-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+  .mt-card.done { opacity: .6; cursor: default; }
+  .mt-card.done:hover { border-color: var(--outline-variant); box-shadow: none; transform: none; }
+  /* L-7: done.editable — 수정 가능 응답은 amber hover (Edit Mode 의도 시각 신호).
+     기존 mt-card hover 효과 (transform/shadow) 복원 + outline 색상 amber. */
+  .mt-card.done.editable { opacity: 1; cursor: pointer; }
+  .mt-card.done.editable:hover {
+    border-color: #f59e0b;
+    box-shadow: 0 4px 12px rgba(245,158,11,.12);
+    transform: translateY(-1px);
+  }
+  html[data-theme="dark"] .mt-card.done.editable:hover {
+    box-shadow: 0 4px 12px rgba(245,158,11,.20);
+  }
+
+  .mt-rater-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: .65rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 9999px;
+    border: 1.5px solid var(--outline-variant);
+    background: var(--surface);
+    color: var(--text-muted);
+  }
+  .mt-rater-chip.done { background: rgba(34,197,94,.10); border-color: rgba(34,197,94,.45); color: #15803d; }
+  html[data-theme="dark"] .mt-rater-chip.done { background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.40); color: #86efac; }
+
+  .mt-status-badge { font-size: .68rem; font-weight: 800; padding: 3px 10px; border-radius: 9999px; white-space: nowrap; }
+  .mt-status-badge.pending { background: rgba(176,17,22,.10); color: var(--primary); border: 1.5px solid rgba(176,17,22,.30); }
+  .mt-status-badge.done    { background: rgba(34,197,94,.10); color: #15803d; border: 1.5px solid rgba(34,197,94,.45); }
+  html[data-theme="dark"] .mt-status-badge.done { background: rgba(34,197,94,.16); color: #86efac; }
+
+  .mt-viewas-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: rgba(176,17,22,.06);
+    border: 1.5px dashed var(--primary);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;
+  }
+  html[data-theme="dark"] .mt-viewas-bar { background: rgba(176,17,22,.10); }
+
+  /* ── eval_type 직책 chip — campus_status.html / status.html 과 동일 색상 (디자인 일관) ── */
+  .badge-type-position { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .badge-type-regular  { background: var(--surface-low); color: var(--text-muted); border: 1px solid var(--border); }
+  .badge-type-tl       { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+  .badge-type-sub      { background: #fefce8; color: #713f12; border: 1px solid #fde68a; }
+  .badge-type-stl      { background: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8; }
+
+  html[data-theme="dark"] .badge-type-position { background: rgba(37,99,235,.15); color: #93c5fd; border-color: rgba(37,99,235,.35); }
+  html[data-theme="dark"] .badge-type-tl       { background: rgba(109,40,217,.18); color: #c4b5fd; border-color: rgba(109,40,217,.40); }
+  html[data-theme="dark"] .badge-type-sub      { background: rgba(180,83,9,.18);   color: #fde68a; border-color: rgba(180,83,9,.40); }
+  html[data-theme="dark"] .badge-type-stl      { background: rgba(190,24,93,.18);  color: #fbcfe8; border-color: rgba(190,24,93,.40); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:900px;margin:0 auto;">
+
+  <!-- 페이지 헤더 -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h2 class="text-lg font-extrabold" style="color:var(--on-surface)">
+        <i class="bi bi-clipboard2-check-fill mr-1.5" style="color:var(--primary)"></i>My Tasks
+      </h2>
+      <p class="text-xs mt-0.5" style="color:var(--outline)">
+        Click a teacher row to start the evaluation
+        <span style="display:block;font-size:.65rem;color:var(--text-dim);margin-top:1px;">평가할 선생님을 클릭하여 평가를 시작하세요</span>
+      </p>
+    </div>
+    <div class="text-xs" style="color:var(--text-muted)">
+      <span class="font-bold" style="color:var(--text-strong)">{{ portal_me.name }}</span>
+      <span class="opacity-60">· {{ portal_me.role | role_label }}</span>
+      {% if portal_me.campus %}<span class="opacity-60" id="mtMyCampusLabel">· {{ portal_me.campus }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if is_admin %}
+  <!-- Admin only — view-as bar -->
+  <div class="mt-viewas-bar">
+    <i class="bi bi-eye-fill" style="color:var(--primary);font-size:.85rem"></i>
+    <span class="text-xs font-bold" style="color:var(--primary)">Admin View-as</span>
+    <span class="text-[10px]" style="color:var(--text-muted)">(admin 전용 미리 보기 — 다른 portal role/campus 시점 시뮬레이션)</span>
+    <select id="mtViewAsRole" onchange="mtAutoApplyViewAs()" class="text-xs px-2 py-1.5" style="border:1.5px solid var(--outline-variant);border-radius:4px;background:var(--surface);color:var(--text);">
+      <option value="">— role —</option>
+      {# 옵션은 portal_roles 동적 로드 — _mtPopulateRoleSelect() 가 admin DOMContentLoaded 시 채움.
+         실패 시 아래 hardcoded fallback. value=raw role (저장·매칭 정합성 유지), text=label. #}
+      <option value="GS">GS</option>
+      <option value="TL">TL</option>
+      <option value="STL">STL</option>
+      <option value="NET">NET</option>
+    </select>
+    <select id="mtViewAsCampus" onchange="mtAutoApplyViewAs()" class="text-xs px-2 py-1.5" style="border:1.5px solid var(--outline-variant);border-radius:4px;background:var(--surface);color:var(--text);">
+      <option value="">— campus —</option>
+    </select>
+    <button onclick="mtClearViewAs()" class="text-xs underline" style="color:var(--text-muted)">Clear</button>
+    <span id="mtViewAsBadge" class="text-xs font-bold" style="color:var(--primary);display:none;"></span>
+  </div>
+  {% endif %}
+
+  <!-- 세션 선택 + 직책 필터 -->
+  <div class="flex items-center gap-3 mb-4 flex-wrap">
+    <label class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">
+      Session <span class="opacity-60 normal-case font-medium">· 평가 회차</span>
+    </label>
+    <select id="mtSessionSelect" onchange="mtOnSessionChange()" class="dyb-select dyb-dd-lg" style="min-width:240px;">
+      <option value="" disabled selected>Loading sessions...</option>
+    </select>
+    <span id="mtSessionInfo" class="text-xs" style="color:var(--text-muted)"></span>
+    <span id="mtViewAsTimingChip" class="text-[10px] font-bold px-2 py-0.5 rounded-full" style="display:none;"></span>
+    <span style="flex:1;"></span>
+    <label class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">
+      Position <span class="opacity-60 normal-case font-medium">· 직책</span>
+    </label>
+    <select id="mtTypeFilter" onchange="mtOnTypeFilterChange()" class="dyb-select" style="min-width:130px;">
+      <option value="">All</option>
+      {% for k, v in eval_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+    </select>
+  </div>
+
+  <!-- 직원 리스트 -->
+  <div id="mtList">
+    <div class="flex items-center gap-3 py-8 justify-center" style="color:var(--text-muted)">
+      <div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+      <span class="text-sm">Loading...</span>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/eval_v2/campus_constants.js') }}"></script>
+<script>
+  window.PORTAL_ME = {{ portal_me | tojson }};
+  window.IS_ADMIN_ME = {{ is_admin | tojson }};
+  window.EVAL_TYPE_LABELS = {{ eval_types | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/eval_v2/my_tasks.js') }}"></script>
+{% endblock %}

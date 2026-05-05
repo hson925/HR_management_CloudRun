@@ -1,0 +1,1402 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | {{ post.title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/quill.snow.css') }}">
+<style>
+  /* ── Keyframes ── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(22px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes progressFill {
+    from { width: 0%; }
+  }
+  @keyframes heroSlide {
+    from { opacity: 0; transform: translateY(-14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes likePopX {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.35); }
+    70%  { transform: scale(0.88); }
+    100% { transform: scale(1); }
+  }
+
+  /* ── Page entry animations ── */
+  .anim-hero    { animation: heroSlide .5s cubic-bezier(.22,1,.36,1) both; }
+  .anim-content { animation: fadeInUp .55s cubic-bezier(.22,1,.36,1) .1s both; will-change: transform; }
+  .anim-sidebar { animation: fadeInUp .55s cubic-bezier(.22,1,.36,1) .18s both; will-change: transform; }
+  .anim-poll    { animation: fadeInUp .5s cubic-bezier(.22,1,.36,1) .22s both; will-change: transform; }
+  .anim-comments{ animation: fadeInUp .5s cubic-bezier(.22,1,.36,1) .28s both; will-change: transform; }
+
+  /* ── Hero / header ── */
+  .post-hero {
+    background: linear-gradient(135deg, #870009 0%, var(--primary) 50%, #c41b22 100%);
+    position: relative;
+    /* 부모 layout의 p-4~p-10 패딩을 상쇄하여 좌우/상단 끝까지 확장 */
+    margin: -1rem -1rem 0;
+  }
+  @media (min-width: 640px)  { .post-hero { margin: -1.5rem -1.5rem 0; } }
+  @media (min-width: 768px)  { .post-hero { margin: -2rem   -2rem   0; } }
+  @media (min-width: 1024px) { .post-hero { margin: -2.5rem -2.5rem 0; } }
+  .post-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+    pointer-events: none;
+  }
+
+  /* ── Category badge ── */
+  .cat-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.3);
+    color: #fff;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 99px;
+    backdrop-filter: blur(4px);
+  }
+  .pinned-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(255,220,0,.2);
+    border: 1px solid rgba(255,220,0,.4);
+    color: #ffd600;
+    font-size: 10px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 99px;
+  }
+  .restricted-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.22);
+    color: rgba(255,255,255,.8);
+    font-size: 10px; font-weight: 600;
+    padding: 3px 9px; border-radius: 99px;
+  }
+
+  /* ── Author avatar (in hero) ── */
+  .author-avatar-hero {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,255,255,.2);
+    border: 2px solid rgba(255,255,255,.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 800;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .author-avatar-sm {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800;
+    flex-shrink: 0; user-select: none;
+  }
+
+  /* ── Main layout ── */
+  .detail-layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 28px;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 36px 20px 80px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .detail-layout { grid-template-columns: 1fr; }
+    .detail-sidebar { display: none; }
+  }
+
+  /* ── Content prose ── */
+  .prose-body .ql-editor {
+    font-size: 15.5px;
+    line-height: 1.85;
+    color: var(--text);
+    padding: 0;
+  }
+  .prose-body .ql-editor h1,
+  .prose-body .ql-editor h2,
+  .prose-body .ql-editor h3 { color: var(--text-strong); font-weight: 700; margin-top: 1.6em; margin-bottom: .5em; }
+  .prose-body .ql-editor p { margin-bottom: 1em; }
+  .prose-body .ql-editor a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+  .prose-body .ql-editor a:visited { color: #6b21a8; }
+  .prose-body .ql-editor blockquote {
+    border-left: 3px solid var(--primary);
+    padding-left: 1em; color: var(--text-muted);
+    margin: 1em 0;
+    font-style: italic;
+  }
+  .prose-body .ql-editor ul, .prose-body .ql-editor ol { padding-left: 1.4em; margin-bottom: 1em; }
+  .prose-body .ql-editor img { border-radius: 10px; max-width: 100%; }
+  .prose-body .ql-editor pre { background:var(--surface-low); border-radius:8px; padding:1em; font-size:13px; overflow-x:auto; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .card-sm {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+
+  /* ── Section headings ── */
+  .section-label {
+    font-size: 11px; font-weight: 800;
+    letter-spacing: .10em; text-transform: uppercase;
+    color: var(--text-muted);
+    display: flex; align-items: center; gap: 7px;
+    margin-bottom: 16px;
+  }
+  .section-label::after {
+    content: ''; flex: 1;
+    height: 1px; background: #e4e4e7;
+  }
+
+  /* ── Attachment items ── */
+  .attach-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-low);
+    transition: border-color .18s, background .18s, box-shadow .18s;
+    text-decoration: none;
+  }
+  .attach-item:hover {
+    border-color: var(--primary);
+    background: var(--surface);
+    box-shadow: 0 2px 12px rgba(176,17,22,.10);
+  }
+  .attach-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+
+  /* ── Poll card ── */
+  .poll-card {
+    background: linear-gradient(135deg, #fff 0%, #fdf2f3 100%);
+    border: 2px solid #f0d0d1;
+    border-radius: 18px;
+    padding: 26px;
+  }
+  .poll-opt-btn {
+    width: 100%; text-align: left;
+    padding: 12px 16px;
+    border: 2px solid var(--outline-variant);
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 14px; font-weight: 600; color: var(--text);
+    cursor: pointer;
+    transition: border-color .18s, background .18s, transform .16s, box-shadow .18s;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .poll-opt-btn:hover {
+    border-color: var(--primary);
+    background: rgba(176,17,22,.04);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 12px rgba(176,17,22,.12);
+  }
+  .poll-bar-track {
+    height: 8px; border-radius: 99px;
+    background: #f0d0d1; overflow: hidden;
+    margin-top: 6px;
+  }
+  .poll-bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #870009, var(--primary));
+    animation: progressFill .7s cubic-bezier(.22,1,.36,1) both;
+    will-change: width;
+  }
+  .poll-bar-fill.muted { background: var(--outline-variant); }
+
+  /* ── Like button ── */
+  .like-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 20px;
+    border: 2px solid var(--outline-variant);
+    border-radius: 99px;
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color .18s, background .18s, box-shadow .18s;
+    font-size: 14px; font-weight: 700; color: var(--on-surface-variant);
+  }
+  .like-btn:hover {
+    border-color: var(--primary);
+    background: rgba(176,17,22,.04);
+    box-shadow: 0 2px 12px rgba(176,17,22,.10);
+  }
+  .like-btn.liked {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(176,17,22,.28);
+  }
+  .like-pop { animation: likePopX .38s cubic-bezier(.22,1,.36,1); }
+
+  /* ── Comment avatars ── */
+  .avatar-colors { --c0:var(--primary);--c1:#2563eb;--c2:#0891b2;--c3:#7c3aed;--c4:#059669;--c5:#d97706; }
+  .av-0 { background: rgba(176,17,22,.12); color: var(--primary); }
+  .av-1 { background: rgba(37,99,235,.12);  color: #2563eb; }
+  .av-2 { background: rgba(8,145,178,.12);  color: #0891b2; }
+  .av-3 { background: rgba(124,58,237,.12); color: #7c3aed; }
+  .av-4 { background: rgba(5,150,105,.12);  color: #059669; }
+  .av-5 { background: rgba(217,119,6,.12);  color: #d97706; }
+
+  /* ── Comment form textarea ── */
+  .comment-textarea {
+    width: 100%;
+    background: var(--surface-low);
+    border: 2px solid var(--outline-variant);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 14px; line-height: 1.6;
+    color: var(--text);
+    resize: none;
+    transition: border-color .2s, box-shadow .2s;
+    outline: none;
+    font-family: inherit;
+  }
+  .comment-textarea:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(176,17,22,.10);
+    background: var(--surface);
+  }
+
+  /* ── Edit reply textarea ── */
+  .reply-textarea {
+    width: 100%;
+    border: 2px solid rgba(176,17,22,.3);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px; line-height: 1.6;
+    color: var(--text);
+    resize: none;
+    outline: none;
+    font-family: inherit;
+    transition: border-color .18s;
+  }
+  .reply-textarea:focus { border-color: var(--primary); }
+
+  /* ── Sidebar sticky ── */
+  .detail-sidebar { position: sticky; top: 88px; }
+
+  /* ── Scroll-to-top btn ── */
+  #scroll-top-btn {
+    position: fixed; bottom: 28px; right: 28px;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--primary); color: #fff;
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 18px rgba(176,17,22,.35);
+    transition: background .18s, transform .18s, opacity .24s;
+    z-index: 30;
+    opacity: 0; pointer-events: none;
+  }
+  #scroll-top-btn.visible { opacity: 1; pointer-events: auto; }
+  #scroll-top-btn:hover { background: var(--primary-dark); transform: translateY(-2px); }
+
+  /* ── Image grid ── */
+  .img-grid-item {
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--outline-variant);
+    transition: border-color .18s, transform .18s;
+    display: block;
+  }
+  .img-grid-item:hover { border-color: var(--primary); transform: scale(1.01); }
+
+  /* ── YouTube wrapper ── */
+  .yt-wrap {
+    position: relative; width: 100%;
+    padding-top: 56.25%;
+    border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--outline-variant);
+    background: #000;
+  }
+  .yt-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* ── Back button ── */
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 13px; font-weight: 600;
+    color: rgba(255,255,255,.75);
+    text-decoration: none;
+    transition: color .16s;
+    padding: 4px 0;
+  }
+  .back-btn:hover { color: #fff; }
+
+  /* ── Meta info bar ── */
+  .meta-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; color: rgba(255,255,255,.65);
+  }
+
+  /* ── Edit/Delete btns ── */
+  .action-btn-edit {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    border: 1.5px solid rgba(255,255,255,.3);
+    border-radius: 8px;
+    font-size: 12px; font-weight: 700;
+    color: rgba(255,255,255,.9);
+    background: rgba(255,255,255,.1);
+    text-decoration: none;
+    transition: background .16s, border-color .16s;
+  }
+  .action-btn-edit:hover { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.55); }
+  .action-btn-delete {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    border: 1.5px solid rgba(255,100,100,.4);
+    border-radius: 8px;
+    font-size: 12px; font-weight: 700;
+    color: #ffb3b3;
+    background: rgba(255,80,80,.1);
+    cursor: pointer;
+    transition: background .16s, border-color .16s;
+  }
+  .action-btn-delete:hover { background: rgba(255,80,80,.22); border-color: rgba(255,100,100,.7); }
+
+  /* ── Views badge ── */
+  .views-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; color: rgba(255,255,255,.6);
+  }
+
+  /* ── Sort buttons ── */
+  .sort-btn {
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em;
+    cursor: pointer; border: none;
+    transition: background .16s, color .16s;
+  }
+  .sort-btn.active { background: rgba(176,17,22,.10); color: var(--primary); }
+  .sort-btn:not(.active) { background: transparent; color: var(--text-dim); }
+  .sort-btn:not(.active):hover { color: var(--on-surface-variant); }
+
+  /* ── Divider ── */
+  .dyb-divider {
+    border: none; border-top: 1px solid var(--outline-variant); margin: 28px 0;
+  }
+
+  /* bg for page — matches layout.html body bg-[#F8FAFC] */
+  body { background: var(--page-bg); }
+  /* :root --page-bg 은 tokens.css 에서 라이트/다크 자동 매핑 */
+
+  /* ── Print Modal ── */
+  #printModal {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,.45);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+  }
+  #printModal.open { opacity: 1; pointer-events: auto; }
+  #printModalBox {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 32px 36px 28px;
+    max-width: 400px; width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,.22);
+    transform: translateY(12px) scale(.97);
+    transition: transform .22s cubic-bezier(.22,1,.36,1), opacity .2s;
+    opacity: 0;
+  }
+  #printModal.open #printModalBox { transform: translateY(0) scale(1); opacity: 1; }
+
+  /* ── @media print ── */
+  @media print {
+    /* Hide nav chrome */
+    aside, header, footer,
+    .detail-sidebar,
+    #scroll-top-btn,
+    #printModal { display: none !important; }
+
+    /* Hide hero decorations */
+    .back-btn,
+    .action-btn-edit,
+    #btn-delete,
+    #btn-like,
+    .views-badge { display: none !important; }
+
+    /* Hide comment controls */
+    #sort-oldest, #sort-newest,
+    #comment-form { display: none !important; }
+
+    /* Remove sidebar margin from layout wrapper */
+    #main-wrapper { margin-left: 0 !important; }
+    main > div { padding: 0 !important; }
+
+    /* Stack detail layout to single column */
+    .detail-layout {
+      display: block !important;
+      padding: 0 !important;
+      max-width: 100% !important;
+    }
+
+    /* Hero: 배경 그라데이션 그대로 인쇄 */
+    .post-hero {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      /* negative margin 제거 — 인쇄 시 full-width */
+      margin: 0 !important;
+    }
+
+    /* Prevent content from breaking mid-card */
+    .card, .card-sm, .poll-card { break-inside: avoid; }
+    .prose-body .ql-editor img { break-inside: avoid; max-width: 100%; }
+    .attach-item { break-inside: avoid; }
+
+    /* Keep page bg white */
+    body { background: #fff !important; }
+
+    /* Comments: hidden when body has print-hide-comments class */
+    body.print-hide-comments .card.anim-comments { display: none !important; }
+    /* Poll */
+    body.print-hide-poll .poll-card { display: none !important; }
+    /* Attachments */
+    body.print-hide-attachments .print-attachments-section { display: none !important; }
+  }
+
+  /* ── 다크 모드 시맨틱 변형 ── */
+  html[data-theme="dark"] .prose-body .ql-editor { color: var(--text); }
+  html[data-theme="dark"] .prose-body .ql-editor h1,
+  html[data-theme="dark"] .prose-body .ql-editor h2,
+  html[data-theme="dark"] .prose-body .ql-editor h3 { color: var(--text-strong); }
+  html[data-theme="dark"] .prose-body .ql-editor a:visited { color: #c4b5fd; }
+  html[data-theme="dark"] .prose-body .ql-editor blockquote { color: var(--text-muted); }
+  /* poll 카드 그라디언트 다크 적응 */
+  html[data-theme="dark"] .poll-card { background: linear-gradient(135deg, var(--surface) 0%, rgba(176,17,22,.10) 100%) !important; border-color: rgba(176,17,22,.35) !important; }
+  html[data-theme="dark"] .poll-opt-btn { background: var(--surface-lowest); color: var(--text); }
+  html[data-theme="dark"] .poll-opt-btn:hover { background: rgba(176,17,22,.10); }
+  html[data-theme="dark"] .poll-bar-track { background: rgba(176,17,22,.20); }
+  html[data-theme="dark"] .poll-bar-fill.muted { background: var(--outline-variant); }
+  html[data-theme="dark"] .like-btn { background: var(--surface-lowest); color: var(--text-muted); }
+  html[data-theme="dark"] .like-btn:hover { background: rgba(176,17,22,.10); }
+  html[data-theme="dark"] .comment-textarea { background: var(--surface-low); color: var(--text); }
+  html[data-theme="dark"] .attach-item { background: var(--surface-low); color: var(--text); }
+  html[data-theme="dark"] .attach-item:hover { background: var(--surface); }
+  html[data-theme="dark"] .sort-btn:not(.active) { color: var(--text-dim); }
+  /* Tailwind 시맨틱 다크 (페이지 사용분) */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50,
+  html[data-theme="dark"] .bg-gray-100    { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500  { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200,
+  html[data-theme="dark"] .border-gray-300 { border-color: var(--border) !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── HERO HEADER ── #}
+<div class="post-hero anim-hero">
+  <div class="max-w-[1060px] mx-auto" style="position:relative;z-index:1;padding:3.5rem 3rem 5rem;">
+
+    {# Top row: Back link + date/views meta #}
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <a href="/announcements" class="back-btn inline-flex">
+        <i class="bi bi-chevron-left text-lg leading-none"></i>
+        Back to Board
+      </a>
+      <div class="flex flex-wrap items-center gap-4">
+        <span class="meta-chip"><i class="bi bi-calendar3"></i>{{ post.created_at[:16].replace('T', ' ') }}</span>
+        {% if post.edited_at %}
+        <span class="meta-chip" title="Last edited {{ post.edited_at[:16].replace('T',' ') }} KST"><i class="bi bi-pencil"></i>Edited {{ post.edited_at[:16].replace('T', ' ') }}</span>
+        {% endif %}
+        {% if post.views is defined and post.views %}
+        <span class="views-badge"><i class="bi bi-eye"></i>{{ post.views }} views</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Badge row #}
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      {% if post.category %}
+      <span class="cat-badge"><i class="bi bi-tag-fill text-[10px]"></i>{{ post.category }}</span>
+      {% endif %}
+      {% if post.pinned %}
+      <span class="pinned-badge"><i class="bi bi-pin-angle-fill"></i> Pinned</span>
+      {% endif %}
+      {% if post.allowed_roles and '__all__' not in post.allowed_roles %}
+      <span class="restricted-badge"><i class="bi bi-lock-fill text-[9px]"></i> {{ post.allowed_roles | join(', ') }}</span>
+      {% endif %}
+    </div>
+
+    {# Title #}
+    <h1 class="text-3xl sm:text-[2.4rem] font-extrabold text-white leading-[1.18] tracking-tight mb-7 max-w-3xl">{{ post.title }}</h1>
+
+    {% if is_target_user %}
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:8px;margin-bottom:16px;backdrop-filter:blur(4px)">
+      <i class="bi bi-person-check-fill" style="color:#fbbf24;font-size:14px"></i>
+      <span style="color:#fff;font-size:12px;font-weight:700">This post was shared with you</span>
+    </div>
+    {% endif %}
+
+    {# Author row + admin buttons #}
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="author-avatar-hero">
+          {{ (post.author_name or post.author_email or '?')[0] | upper }}
+        </div>
+        <div>
+          <p class="text-sm font-bold text-white leading-tight">{{ post.author_name or post.author_email }}</p>
+          {% set meta = [] %}
+          {% if post.author_role %}{% set _ = meta.append(post.author_role) %}{% endif %}
+          {% if post.author_campus %}{% set _ = meta.append(post.author_campus) %}{% endif %}
+          {% if meta %}
+          <p class="text-[11px] text-white/60 uppercase tracking-wider mt-0.5">{{ meta | join(' · ') }}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% if is_admin %}
+      <div class="flex items-center gap-2">
+        <a href="/admin/announcements/{{ post.id }}/edit" class="action-btn-edit">
+          <i class="bi bi-pencil-fill"></i> Edit
+        </a>
+        <button id="btn-delete" class="action-btn-delete">
+          <i class="bi bi-trash-fill"></i> Delete
+        </button>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+{# ── MAIN LAYOUT ── #}
+<div class="detail-layout">
+
+  {# ── LEFT: MAIN CONTENT ── #}
+  <div class="min-w-0">
+
+    {# Content card #}
+    <div class="card anim-content mb-6">
+      <section class="prose-body">
+        {% set yt_pos = post.youtube_position if post.youtube_position else 'bottom' %}
+
+        {% if yt_pos == 'top' and post.youtube_videos %}
+        <div class="mb-8 space-y-4">
+          {% for yt in post.youtube_videos %}
+          <div class="yt-wrap"><iframe src="https://www.youtube-nocookie.com/embed/{{ yt.id }}" title="YouTube video" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="ql-snow announcement-body">
+          <div class="ql-editor" style="padding:0">{{ post.content | safe }}</div>
+        </div>
+
+        {% if yt_pos == 'after_content' and post.youtube_videos %}
+        <div class="mt-8 space-y-4">
+          {% for yt in post.youtube_videos %}
+          <div class="yt-wrap"><iframe src="https://www.youtube-nocookie.com/embed/{{ yt.id }}" title="YouTube video" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if post.images %}
+        <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {% for img in post.images %}
+          <a href="{{ img.url }}" target="_blank" rel="noopener noreferrer" class="img-grid-item">
+            <img src="{{ img.url }}" alt="" class="w-full h-auto object-cover" loading="lazy">
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if yt_pos == 'bottom' and post.youtube_videos %}
+        <div class="mt-8 space-y-4">
+          {% for yt in post.youtube_videos %}
+          <div class="yt-wrap"><iframe src="https://www.youtube-nocookie.com/embed/{{ yt.id }}" title="YouTube video" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </section>
+    </div>
+
+    {# ── ATTACHMENTS ── #}
+    {% if post.attachments %}
+    <div class="card anim-content mb-6 print-attachments-section">
+      <p class="section-label"><i class="bi bi-paperclip text-[var(--primary)]"></i> Attachments</p>
+      <ul class="space-y-2">
+        {% for a in post.attachments %}
+        <li>
+          <a href="{{ a.url }}" target="_blank" rel="noopener noreferrer" class="attach-item group">
+            {# File-type icon color #}
+            {% set fn = a.filename | lower %}
+            {% if '.pdf' in fn %}
+            <div class="attach-icon bg-red-50 text-red-600"><i class="bi bi-file-earmark-pdf-fill"></i></div>
+            {% elif '.png' in fn or '.jpg' in fn or '.jpeg' in fn or '.gif' in fn or '.webp' in fn or '.svg' in fn %}
+            <div class="attach-icon bg-blue-50 text-blue-600"><i class="bi bi-file-earmark-image-fill"></i></div>
+            {% elif '.zip' in fn or '.rar' in fn or '.7z' in fn or '.tar' in fn or '.gz' in fn %}
+            <div class="attach-icon bg-yellow-50 text-yellow-600"><i class="bi bi-file-earmark-zip-fill"></i></div>
+            {% elif '.xls' in fn or '.xlsx' in fn or '.csv' in fn %}
+            <div class="attach-icon bg-green-50 text-green-600"><i class="bi bi-file-earmark-spreadsheet-fill"></i></div>
+            {% elif '.doc' in fn or '.docx' in fn %}
+            <div class="attach-icon bg-blue-50 text-blue-700"><i class="bi bi-file-earmark-word-fill"></i></div>
+            {% elif '.py' in fn or '.js' in fn or '.ts' in fn or '.html' in fn or '.css' in fn or '.json' in fn %}
+            <div class="attach-icon bg-purple-50 text-purple-600"><i class="bi bi-file-earmark-code-fill"></i></div>
+            {% elif '.ppt' in fn or '.pptx' in fn %}
+            <div class="attach-icon bg-orange-50 text-orange-600"><i class="bi bi-file-earmark-ppt-fill"></i></div>
+            {% else %}
+            <div class="attach-icon bg-gray-100 text-gray-500"><i class="bi bi-file-earmark-fill"></i></div>
+            {% endif %}
+
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-800 truncate">{{ a.filename }}</p>
+              <p class="text-[11px] text-gray-400 mt-0.5">{{ ((a.size or 0) / 1024) | round(0) | int }} KB</p>
+            </div>
+            <span class="text-xs font-bold uppercase tracking-widest text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+              <i class="bi bi-download"></i> Download
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {# ── POLL ── #}
+    {% if post.poll and post.poll.enabled %}
+    <div class="poll-card anim-poll mb-6">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-9 h-9 rounded-xl bg-[var(--primary)] text-white flex items-center justify-center text-base">
+          <i class="bi bi-bar-chart-fill"></i>
+        </div>
+        <div>
+          <p class="text-xs font-800 uppercase tracking-widest text-[var(--primary)] font-extrabold">Community Poll</p>
+          <p class="text-[11px] text-gray-400">Cast your vote below</p>
+        </div>
+      </div>
+      <div id="poll-widget">
+        <div class="text-xs text-gray-400 text-center py-6 flex items-center justify-center gap-2">
+          <i class="bi bi-arrow-repeat animate-spin"></i> Loading poll...
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── LIKE / INTERACTION BAR ── #}
+    <div class="flex items-center gap-4 mb-6">
+      <button id="btn-like" class="like-btn" aria-label="Like this post">
+        <i class="bi bi-hand-thumbs-up-fill text-base"></i>
+        <span id="like-count">0</span>
+        <span class="text-xs font-normal opacity-70">likes</span>
+      </button>
+    </div>
+
+    {# ── COMMENTS ── #}
+    <div class="card anim-comments">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+          <i class="bi bi-chat-dots text-[var(--primary)]"></i>
+          Comments
+          <span id="comment-count" class="text-sm font-normal text-gray-400"></span>
+        </h2>
+        <div class="flex items-center gap-1">
+          <button id="sort-oldest" class="sort-btn active">Oldest</button>
+          <button id="sort-newest" class="sort-btn">Newest</button>
+          <button id="sort-top" class="sort-btn">Top</button>
+        </div>
+      </div>
+
+      <div id="comments-list" class="space-y-0 mb-8"></div>
+
+      {# Comment form #}
+      <div class="pt-4 border-t border-gray-100">
+        <p class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Leave a comment</p>
+        <form id="comment-form" class="flex gap-3">
+          <div class="author-avatar-sm av-0 mt-0.5">
+            {{ (session.get('emp_name') or session.get('admin_email') or '?')[0] | upper }}
+          </div>
+          <div class="flex-1">
+            <textarea id="comment-input" rows="3" maxlength="2000"
+                      placeholder="Share your thoughts..."
+                      class="comment-textarea"></textarea>
+            <div class="mt-3 flex justify-end">
+              <button type="submit"
+                      class="inline-flex items-center gap-2 px-6 py-2 bg-[var(--primary)] hover:bg-[#870009] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-colors shadow-sm hover:shadow-md">
+                <i class="bi bi-send-fill text-[11px]"></i> Post Comment
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>{# end main col #}
+
+  {# ── RIGHT: SIDEBAR ── #}
+  <aside class="detail-sidebar anim-sidebar">
+
+    {# Post info card #}
+    <div class="card-sm mb-4">
+      <p class="section-label" style="margin-bottom:12px"><i class="bi bi-info-circle text-[var(--primary)]"></i> Post Info</p>
+      <dl class="space-y-3 text-sm">
+        <div class="flex items-start gap-2">
+          <dt class="text-gray-400 w-16 shrink-0 text-xs pt-0.5">Author</dt>
+          <dd class="font-semibold text-gray-800">{{ post.author_name or post.author_email or '—' }}</dd>
+        </div>
+        <div class="flex items-start gap-2">
+          <dt class="text-gray-400 w-16 shrink-0 text-xs pt-0.5">Date</dt>
+          <dd class="font-semibold text-gray-800">{{ post.created_at[:10] }}</dd>
+        </div>
+        {% if post.category %}
+        <div class="flex items-start gap-2">
+          <dt class="text-gray-400 w-16 shrink-0 text-xs pt-0.5">Category</dt>
+          <dd><span class="inline-block bg-[var(--primary)]/10 text-[var(--primary)] text-[11px] font-bold px-2 py-0.5 rounded-full">{{ post.category }}</span></dd>
+        </div>
+        {% endif %}
+        {% if post.views is defined and post.views %}
+        <div class="flex items-start gap-2">
+          <dt class="text-gray-400 w-16 shrink-0 text-xs pt-0.5">Views</dt>
+          <dd class="font-semibold text-gray-800">{{ post.views }}</dd>
+        </div>
+        {% endif %}
+        {% if post.pinned %}
+        <div class="flex items-start gap-2">
+          <dt class="text-gray-400 w-16 shrink-0 text-xs pt-0.5">Status</dt>
+          <dd><span class="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-[11px] font-bold px-2 py-0.5 rounded-full border border-yellow-200"><i class="bi bi-pin-angle-fill text-[9px]"></i> Pinned</span></dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+
+    {# Quick actions #}
+    <div class="card-sm mb-4">
+      <p class="section-label" style="margin-bottom:12px"><i class="bi bi-lightning-charge text-[var(--primary)]"></i> Quick Actions</p>
+      <div class="space-y-2">
+        <a href="/announcements"
+           class="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors text-left">
+          <i class="bi bi-grid-3x3-gap text-[var(--primary)]"></i> All Announcements
+        </a>
+        <button onclick="openPrintModal()"
+           class="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors text-left">
+          <i class="bi bi-printer text-gray-400"></i> Print
+        </button>
+        {% if is_admin %}
+        <a href="/admin/announcements/{{ post.id }}/edit"
+           class="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors text-left">
+          <i class="bi bi-pencil-fill text-blue-500"></i> Edit Post
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Scroll-to-comments shortcut #}
+    <div class="card-sm">
+      <button onclick="document.getElementById('comment-input').scrollIntoView({behavior:'smooth', block:'center'}); setTimeout(()=>document.getElementById('comment-input').focus(), 400);"
+              class="flex items-center gap-2 w-full text-sm font-semibold text-[var(--primary)] hover:underline">
+        <i class="bi bi-chat-dots-fill"></i> Jump to Comments
+      </button>
+    </div>
+
+  </aside>
+
+</div>{# end detail-layout #}
+
+{# Scroll-to-top button #}
+<button id="scroll-top-btn" aria-label="Back to top">
+  <i class="bi bi-chevron-up text-base"></i>
+</button>
+
+{# ── PRINT MODAL ── #}
+<div id="printModal" role="dialog" aria-modal="true" aria-labelledby="printModalTitle">
+  <div id="printModalBox">
+    <div class="flex items-center gap-3 mb-5">
+      <div class="w-10 h-10 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center text-lg">
+        <i class="bi bi-printer-fill"></i>
+      </div>
+      <div>
+        <h2 id="printModalTitle" class="text-base font-extrabold text-gray-900">Print Post</h2>
+        <p class="text-xs text-gray-400">Choose print options</p>
+      </div>
+    </div>
+
+    <div class="space-y-2 mb-5">
+      <label class="flex items-center gap-3 cursor-pointer py-3 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors select-none">
+        <input type="checkbox" id="printIncludeComments" class="w-4 h-4 accent-[var(--primary)] rounded">
+        <div>
+          <p class="text-sm font-semibold text-gray-800">Include comments</p>
+          <p class="text-xs text-gray-400">댓글 포함하여 출력</p>
+        </div>
+      </label>
+      <label class="flex items-center gap-3 cursor-pointer py-3 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors select-none">
+        <input type="checkbox" id="printIncludePoll" class="w-4 h-4 accent-[var(--primary)] rounded" checked>
+        <div>
+          <p class="text-sm font-semibold text-gray-800">Include poll</p>
+          <p class="text-xs text-gray-400">투표 포함하여 출력</p>
+        </div>
+      </label>
+      <label class="flex items-center gap-3 cursor-pointer py-3 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors select-none">
+        <input type="checkbox" id="printIncludeAttachments" class="w-4 h-4 accent-[var(--primary)] rounded" checked>
+        <div>
+          <p class="text-sm font-semibold text-gray-800">Include attachments</p>
+          <p class="text-xs text-gray-400">첨부파일 목록 포함하여 출력</p>
+        </div>
+      </label>
+    </div>
+
+    <div class="flex items-center gap-3 justify-end">
+      <button onclick="closePrintModal()"
+              class="px-5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+        Cancel
+      </button>
+      <button onclick="executePrint()"
+              class="px-5 py-2 rounded-xl bg-[var(--primary)] text-white text-sm font-bold hover:bg-[#870009] transition-colors flex items-center gap-2">
+        <i class="bi bi-printer-fill text-xs"></i> Print
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+  const postId        = {{ post.id | tojson }};
+  const isAdmin       = {{ 'true' if is_admin else 'false' }};
+  const myEmail       = {{ (session.get('admin_email') or '') | tojson }};
+  const ytVideos      = {{ (post.youtube_videos or []) | tojson }};
+  const listEl        = document.getElementById('comments-list');
+  const form          = document.getElementById('comment-form');
+  const input         = document.getElementById('comment-input');
+  const delBtn        = document.getElementById('btn-delete');
+  const countEl       = document.getElementById('comment-count');
+  const sortOldestBtn = document.getElementById('sort-oldest');
+  const sortNewestBtn = document.getElementById('sort-newest');
+  const sortTopBtn    = document.getElementById('sort-top');
+
+  let allComments = [];
+  let sortOrder   = 'oldest';
+
+  // Avatar color classes (cycles)
+  const AV_CLASSES = ['av-0','av-1','av-2','av-3','av-4','av-5'];
+  function avClass(name){ const code = (name||'?').charCodeAt(0); return AV_CLASSES[code % AV_CLASSES.length]; }
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ── Mark as read (fire-and-forget) ──
+  fetch('/api/announcements/mark-read', {method:'POST', credentials:'same-origin'}).catch(()=>{});
+
+  // ── YouTube inline marker injection ──
+  (function injectYT(){
+    const markers = document.querySelectorAll('.ql-editor .yt-embed-marker');
+    if(!markers.length || !ytVideos.length) return;
+    markers.forEach((marker, i) => {
+      const vid = ytVideos[i % ytVideos.length];
+      const wrap = document.createElement('div');
+      wrap.className = 'yt-wrap my-4';
+      wrap.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${esc(vid.id)}" frameborder="0" allow="accelerometer;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+      marker.replaceWith(wrap);
+    });
+  })();
+
+  // ── Comment rendering ──
+  function _initial(name){ return (name||'?')[0].toUpperCase(); }
+
+  function renderCommentBlock(c, isReply){
+    const szAvatar = isReply ? 'w-8 h-8 text-[11px]' : 'w-9 h-9 text-sm';
+    const szText   = isReply ? 'text-[13.5px]' : 'text-[14px]';
+
+    if(c.deleted){
+      return `
+        <div class="flex gap-3 py-5 border-b border-gray-100 last:border-0" data-cid="${esc(c.id)}">
+          <div class="${szAvatar} rounded-full bg-gray-100 text-gray-300 flex items-center justify-center font-extrabold shrink-0">?</div>
+          <div class="flex-1 pt-0.5">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs text-gray-400 font-semibold italic">[deleted]</span>
+              <span class="text-[10px] text-gray-300">${esc((c.created_at||'').replace('T',' ').slice(0,16))}</span>
+            </div>
+            <p class="${szText} text-gray-400 italic">This comment has been deleted.</p>
+          </div>
+        </div>`;
+    }
+
+    const isOwn    = c.author_email === myEmail;
+    const canDel   = isAdmin || isOwn;
+    const campus   = c.author_campus ? `<span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[10px] font-bold">${esc(c.author_campus)}</span>` : '';
+    const role     = c.author_role   ? `<span class="bg-[var(--primary)]/10 text-[var(--primary)] px-2 py-0.5 rounded-full text-[10px] font-bold">${esc(c.author_role)}</span>` : '';
+    const edited   = c.edited_at     ? `<span class="text-[10px] text-gray-400 italic">(edited)</span>` : '';
+    const likeCount = c.like_count || 0;
+    const likedStyle = c.my_liked ? 'color:var(--primary);font-weight:800' : 'color:#9ca3af';
+    const likeBtn2  = `<button data-cid="${esc(c.id)}" class="js-like-comment flex items-center gap-1 text-[11px] font-bold uppercase tracking-widest transition-colors" style="${likedStyle}"><i class="bi bi-hand-thumbs-up${c.my_liked ? '-fill' : ''}"></i>${likeCount > 0 ? `<span class="like-num">${likeCount}</span>` : ''}</button>`;
+    const replyBtn = !isReply ? `<button data-cid="${esc(c.id)}" class="js-reply-comment text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-[var(--primary)] transition-colors">Reply</button>` : '';
+    const editBtn  = isOwn    ? `<button data-cid="${esc(c.id)}" class="js-edit-comment text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-[var(--primary)] transition-colors">Edit</button>` : '';
+    const dBtn2    = canDel   ? `<button data-cid="${esc(c.id)}" class="js-del-comment text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-red-500 transition-colors">Delete</button>` : '';
+    const actions  = [likeBtn2, replyBtn, editBtn, dBtn2].filter(Boolean).join('');
+    const ac       = avClass(c.author_name);
+
+    return `
+      <div class="flex gap-3" data-cid="${esc(c.id)}">
+        <div class="${szAvatar} rounded-full ${ac} flex items-center justify-center font-extrabold shrink-0 select-none author-avatar-sm">${_initial(c.author_name)}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <span class="text-sm font-bold text-gray-900">${esc(c.author_name)}</span>
+            ${campus}${role}
+            <span class="text-[10px] text-gray-400">${esc((c.created_at||'').replace('T',' ').slice(0,16))}</span>
+            ${edited}
+          </div>
+          <div class="${szText} text-gray-700 whitespace-pre-wrap break-words js-comment-text leading-relaxed">${esc(c.content)}</div>
+          ${actions ? `<div class="flex items-center gap-4 mt-3">${actions}</div>` : ''}
+          ${!isReply ? `<div class="js-reply-box hidden mt-4"></div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function renderComments(){
+    const total = allComments.length;
+    countEl.textContent = total ? `· ${total}` : '';
+    if(!total){
+      listEl.innerHTML = `<div class="text-sm text-gray-400 text-center py-10 flex flex-col items-center gap-2"><i class="bi bi-chat text-2xl opacity-30"></i>No comments yet. Be the first!</div>`;
+      return;
+    }
+
+    const repliesByParent = {};
+    const roots = [];
+    allComments.forEach(c => {
+      if(c.parent_id){ (repliesByParent[c.parent_id] = repliesByParent[c.parent_id] || []).push(c); }
+      else { roots.push(c); }
+    });
+    roots.sort((a, b) => {
+      if (sortOrder === 'top') return (b.like_count||0) - (a.like_count||0);
+      const av = a.created_at||'', bv = b.created_at||'';
+      return sortOrder === 'newest' ? (bv < av ? -1 : bv > av ? 1 : 0) : (av < bv ? -1 : av > bv ? 1 : 0);
+    });
+    Object.values(repliesByParent).forEach(arr => arr.sort((a, b) => (a.created_at||'') < (b.created_at||'') ? -1 : 1));
+
+    listEl.innerHTML = roots.map(root => {
+      const rootHtml = renderCommentBlock(root, false);
+      const replies  = repliesByParent[root.id] || [];
+      let replySection = '';
+      if (replies.length) {
+        const replyItems = replies.map(r => renderCommentBlock(r, true)).join('');
+        replySection = `
+          <button class="js-toggle-replies flex items-center gap-1.5 mt-3 ml-12 text-[11px] font-bold transition-colors" style="color:var(--text-muted)" data-expanded="false">
+            <i class="bi bi-chat-left-dots" style="font-size:10px"></i>
+            <span class="reply-label">${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}</span>
+            <i class="bi bi-chevron-down reply-chevron" style="font-size:9px;transition:transform .18s"></i>
+          </button>
+          <div class="js-replies-wrap hidden ml-12 mt-3 pl-4 space-y-4 py-2" style="border-left:2.5px solid rgba(176,17,22,0.45)">
+            ${replyItems}
+          </div>`;
+      }
+      return `<div class="comment-row py-5" style="border-bottom:1px solid var(--outline-variant)">${rootHtml}${replySection}</div>`;
+    }).join('') + '<div style="display:none"></div>';/* last-child sentinel removed */
+
+    // last comment row has no border
+    const rows = listEl.querySelectorAll('.comment-row');
+    if (rows.length) rows[rows.length - 1].style.borderBottom = 'none';
+
+    // reply toggle 이벤트
+    listEl.querySelectorAll('.js-toggle-replies').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const expanded = btn.getAttribute('data-expanded') === 'true';
+        const wrap    = btn.nextElementSibling;
+        const chevron = btn.querySelector('.reply-chevron');
+        if (expanded) {
+          wrap.classList.add('hidden');
+          btn.setAttribute('data-expanded', 'false');
+          chevron.style.transform = '';
+          btn.style.color = 'var(--text-muted)';
+        } else {
+          wrap.classList.remove('hidden');
+          btn.setAttribute('data-expanded', 'true');
+          chevron.style.transform = 'rotate(180deg)';
+          btn.style.color = 'var(--primary)';
+        }
+      });
+    });
+  }
+
+  async function loadComments(){
+    try {
+      const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/comments`, {credentials:'same-origin'});
+      const data = await res.json();
+      if(data.status === 'SUCCESS'){ allComments = data.items || []; renderComments(); }
+    } catch(e){ console.error(e); }
+  }
+
+  // ── Sort ──
+  function setSort(order){
+    sortOrder = order;
+    sortOldestBtn.classList.toggle('active', order === 'oldest');
+    sortNewestBtn.classList.toggle('active', order === 'newest');
+    sortTopBtn.classList.toggle('active', order === 'top');
+    renderComments();
+  }
+  sortOldestBtn.addEventListener('click', () => setSort('oldest'));
+  sortNewestBtn.addEventListener('click', () => setSort('newest'));
+  sortTopBtn.addEventListener('click',    () => setSort('top'));
+
+  // ── Post root comment ──
+  let submitting = false;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if(submitting) return;
+    const content = input.value.trim();
+    if(!content) return;
+    submitting = true;
+    try {
+      const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/comments`, {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({content}),
+      });
+      const data = await res.json();
+      if(data.status === 'SUCCESS'){ input.value = ''; loadComments(); }
+      else alert(data.message || 'Failed to post comment.');
+    } catch(e){ console.error(e); alert('An error occurred.'); }
+    finally { submitting = false; }
+  });
+
+  // ── Delegated events (reply / edit / delete) ──
+  listEl.addEventListener('click', async (e) => {
+
+    // Comment Like (optimistic UI)
+    const likeBtn = e.target.closest('.js-like-comment');
+    if(likeBtn){
+      if(likeBtn.dataset.pending) return;
+      const cid = likeBtn.dataset.cid;
+      const comment = allComments.find(c => c.id === cid);
+      if(!comment) return;
+      // Save previous state for rollback
+      const prevLiked = comment.my_liked;
+      const prevCount = comment.like_count;
+      // Optimistic update
+      comment.my_liked = !prevLiked;
+      comment.like_count = prevLiked ? Math.max(0, prevCount - 1) : prevCount + 1;
+      // Helper to sync DOM with comment state
+      const syncLikeDom = () => {
+        const icon = likeBtn.querySelector('i');
+        let numEl  = likeBtn.querySelector('.like-num');
+        if(comment.my_liked){
+          likeBtn.style.color = 'var(--primary)'; likeBtn.style.fontWeight = '800';
+          if(icon) icon.className = 'bi bi-hand-thumbs-up-fill';
+        } else {
+          likeBtn.style.color = 'var(--text-dim)'; likeBtn.style.fontWeight = '700';
+          if(icon) icon.className = 'bi bi-hand-thumbs-up';
+        }
+        if(comment.like_count > 0){
+          if(!numEl){ numEl = document.createElement('span'); numEl.className = 'like-num'; likeBtn.appendChild(numEl); }
+          numEl.textContent = comment.like_count;
+        } else if(numEl){ numEl.remove(); }
+      };
+      syncLikeDom();
+      // Background fetch — reconcile or rollback
+      likeBtn.dataset.pending = '1';
+      fetch(`/api/announcements/${encodeURIComponent(postId)}/comments/${encodeURIComponent(cid)}/like`, {method:'POST', credentials:'same-origin'})
+        .then(r => r.json())
+        .then(data => {
+          if(data.status === 'SUCCESS'){
+            comment.my_liked = data.liked;
+            comment.like_count = data.count;
+          } else {
+            comment.my_liked = prevLiked;
+            comment.like_count = prevCount;
+          }
+          syncLikeDom();
+          if(sortOrder === 'top') renderComments();
+        })
+        .catch(() => {
+          comment.my_liked = prevLiked;
+          comment.like_count = prevCount;
+          syncLikeDom();
+        })
+        .finally(() => { delete likeBtn.dataset.pending; });
+      return;
+    }
+
+    // Reply
+    const replyBtn = e.target.closest('.js-reply-comment');
+    if(replyBtn){
+      const cid  = replyBtn.dataset.cid;
+      const card = listEl.querySelector(`[data-cid="${CSS.escape(cid)}"]`);
+      const box  = card && card.querySelector('.js-reply-box');
+      if(!box) return;
+      if(!box.classList.contains('hidden')){ box.classList.add('hidden'); box.innerHTML = ''; return; }
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <div class="ml-10 pl-4 border-l-2 border-[var(--primary)]/25 py-3">
+          <textarea class="reply-textarea" rows="2" maxlength="2000" placeholder="Write a reply..."></textarea>
+          <div class="flex gap-2 mt-2 justify-end">
+            <button class="js-cancel-reply px-4 py-1.5 border border-gray-200 text-xs font-bold rounded-xl hover:bg-gray-50 text-gray-500">Cancel</button>
+            <button class="js-send-reply px-5 py-1.5 bg-[var(--primary)] text-white text-xs font-bold rounded-xl hover:bg-[#870009]"><i class="bi bi-send-fill text-[10px]"></i> Reply</button>
+          </div>
+        </div>`;
+      box.querySelector('textarea').focus();
+      box.querySelector('.js-cancel-reply').addEventListener('click', () => { box.classList.add('hidden'); box.innerHTML = ''; });
+      box.querySelector('.js-send-reply').addEventListener('click', async () => {
+        const ta = box.querySelector('textarea');
+        const content = ta.value.trim();
+        if(!content) return;
+        try {
+          const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/comments`, {
+            method:'POST', credentials:'same-origin',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({content, parent_id: cid}),
+          });
+          const data = await res.json();
+          if(data.status === 'SUCCESS') loadComments();
+          else alert(data.message || 'Failed to post reply.');
+        } catch(err){ console.error(err); alert('An error occurred.'); }
+      });
+      return;
+    }
+
+    // Edit
+    const editBtn = e.target.closest('.js-edit-comment');
+    if(editBtn){
+      const cid    = editBtn.dataset.cid;
+      const card   = listEl.querySelector(`[data-cid="${CSS.escape(cid)}"]`);
+      if(!card) return;
+      const textDiv = card.querySelector('.js-comment-text');
+      if(!textDiv) return;
+      const original = textDiv.textContent;
+      textDiv.style.display = 'none';
+      editBtn.style.display = 'none';
+      const editor = document.createElement('div');
+      editor.className = 'mt-2';
+      editor.innerHTML = `
+        <textarea class="reply-textarea" rows="3" maxlength="2000">${esc(original)}</textarea>
+        <div class="flex gap-2 mt-2">
+          <button class="js-save-edit px-4 py-1.5 bg-[var(--primary)] text-white text-xs font-bold rounded-xl hover:bg-[#870009]">Save</button>
+          <button class="js-cancel-edit px-4 py-1.5 border border-gray-200 text-xs font-semibold rounded-xl hover:bg-gray-50 text-gray-500">Cancel</button>
+        </div>`;
+      textDiv.parentNode.insertBefore(editor, textDiv.nextSibling);
+      editor.querySelector('.js-cancel-edit').addEventListener('click', () => { editor.remove(); textDiv.style.display = ''; editBtn.style.display = ''; });
+      editor.querySelector('.js-save-edit').addEventListener('click', async () => {
+        const newContent = editor.querySelector('textarea').value.trim();
+        if(!newContent){ alert('Content cannot be empty.'); return; }
+        try {
+          const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/comments/${encodeURIComponent(cid)}`,
+            { method:'PATCH', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({content: newContent}) });
+          const data = await res.json();
+          if(data.status === 'SUCCESS') loadComments();
+          else alert(data.message || 'Edit failed.');
+        } catch(err){ console.error(err); alert('An error occurred.'); }
+      });
+      return;
+    }
+
+    // Delete comment
+    const dBtn2 = e.target.closest('.js-del-comment');
+    if(dBtn2){
+      if(!confirm('Delete this comment?')) return;
+      const cid = dBtn2.dataset.cid;
+      try {
+        const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/comments/${encodeURIComponent(cid)}`,
+          { method:'DELETE', credentials:'same-origin' });
+        const data = await res.json();
+        if(data.status === 'SUCCESS') loadComments();
+        else alert(data.message || 'Delete failed.');
+      } catch(e){ console.error(e); alert('An error occurred.'); }
+    }
+  });
+
+  // ── Delete post ──
+  if(delBtn){
+    delBtn.addEventListener('click', async () => {
+      if(!confirm('Delete this announcement? This cannot be undone.')) return;
+      try {
+        const res  = await fetch(`/api/announcements/delete/${encodeURIComponent(postId)}`, { method:'POST', credentials:'same-origin' });
+        const data = await res.json();
+        if(data.status === 'SUCCESS') location.href = '/announcements';
+        else alert(data.message || 'Delete failed.');
+      } catch(e){ console.error(e); alert('An error occurred.'); }
+    });
+  }
+
+  loadComments();
+
+  // ── Reactions (like) ──
+  const likeBtn      = document.getElementById('btn-like');
+  const likeCountEl  = document.getElementById('like-count');
+  let myLiked        = false;
+
+  function paintLike(){
+    if(myLiked){
+      likeBtn.classList.add('liked');
+      likeBtn.classList.remove('like-pop');
+      void likeBtn.offsetWidth;  // reflow for re-animation
+      likeBtn.classList.add('like-pop');
+    } else {
+      likeBtn.classList.remove('liked');
+    }
+  }
+  async function loadReactions(){
+    try {
+      const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/reactions`, {credentials:'same-origin'});
+      const data = await res.json();
+      if(data.status === 'SUCCESS'){ myLiked = !!data.my_liked; likeCountEl.textContent = data.count || 0; paintLike(); }
+    } catch(e){ /* ignore */ }
+  }
+  let submittingLike = false;
+  likeBtn.addEventListener('click', async () => {
+    if(submittingLike) return;
+    submittingLike = true;
+    likeBtn.disabled = true;
+    try {
+      const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/react`, { method:'POST', credentials:'same-origin' });
+      const data = await res.json();
+      if(data.status === 'SUCCESS'){ myLiked = !!data.liked; likeCountEl.textContent = data.count || 0; paintLike(); }
+    } catch(e){ /* ignore */ } finally { submittingLike = false; likeBtn.disabled = false; }
+  });
+  loadReactions();
+
+  // ── Scroll-to-top ──
+  const scrollBtn = document.getElementById('scroll-top-btn');
+  window.addEventListener('scroll', () => {
+    scrollBtn.classList.toggle('visible', window.scrollY > 600);
+  }, { passive: true });
+  scrollBtn.addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
+
+  // ── Poll widget ──
+  (function initPoll(){
+    const pollSection = document.getElementById('poll-widget');
+    if(!pollSection) return;
+
+    async function loadPoll(){
+      try {
+        const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/poll`, {credentials:'same-origin'});
+        const data = await res.json();
+        if(data.status !== 'SUCCESS' || !data.poll){ pollSection.innerHTML = ''; return; }
+        renderPoll(data.poll);
+      } catch(e){ console.error(e); pollSection.innerHTML = ''; }
+    }
+
+    function renderPoll(poll){
+      const ended      = poll.ended;
+      const hasVoted   = !!poll.my_vote;
+      const showResults= hasVoted || ended || isAdmin;
+      const total      = poll.total || 0;
+
+      let html = `<p class="text-base font-bold text-gray-900 mb-3 leading-snug">${esc(poll.question)}</p>`;
+
+      // Mode badge
+      if(poll.mode === 'anonymous'){
+        html += `<p class="text-[11px] text-gray-400 mb-4 flex items-center gap-1.5"><i class="bi bi-eye-slash"></i> Anonymous poll — responses are private</p>`;
+      } else {
+        html += `<p class="text-[11px] text-gray-400 mb-4 flex items-center gap-1.5"><i class="bi bi-person-check"></i> Named poll — your name will be visible</p>`;
+      }
+
+      if(ended){
+        html += `<div class="inline-flex items-center gap-1.5 bg-red-50 text-[var(--primary)] text-[11px] font-bold px-3 py-1 rounded-full border border-red-200 mb-4"><i class="bi bi-clock-fill"></i> Poll ended</div>`;
+      }
+
+      if(showResults){
+        poll.options.forEach(opt => {
+          const pct      = total > 0 ? Math.round((opt.count / total) * 100) : 0;
+          const isMyVote = poll.my_vote === opt.id;
+          html += `
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-sm font-semibold ${isMyVote ? 'text-[var(--primary)]' : 'text-gray-700'} flex items-center gap-1.5">
+                  ${esc(opt.label)}${isMyVote ? ' <i class="bi bi-check-circle-fill text-xs text-[var(--primary)]"></i>' : ''}
+                </span>
+                <span class="text-xs font-bold ${isMyVote ? 'text-[var(--primary)]' : 'text-gray-400'}">${pct}% <span class="font-normal opacity-70">(${opt.count})</span></span>
+              </div>
+              <div class="poll-bar-track">
+                <div class="poll-bar-fill ${isMyVote ? '' : 'muted'}" style="width:${pct}%"></div>
+              </div>
+              ${(poll.mode === 'named' && opt.voters && opt.voters.length) ? `<p class="text-[11px] text-gray-400 mt-1 pl-1">${opt.voters.map(v => esc(v)).join(', ')}</p>` : ''}
+            </div>`;
+        });
+        html += `<p class="text-[12px] text-gray-400 mt-2 font-medium"><i class="bi bi-people"></i> ${total} total vote${total !== 1 ? 's' : ''}</p>`;
+        if(hasVoted && !ended){
+          html += `<button id="poll-unvote" class="mt-3 text-xs text-gray-400 hover:text-[var(--primary)] hover:underline flex items-center gap-1"><i class="bi bi-x-circle"></i> Retract vote</button>`;
+        }
+      } else {
+        poll.options.forEach(opt => {
+          html += `<button class="poll-opt-btn js-poll-vote" data-opt-id="${esc(opt.id)}">${esc(opt.label)}</button>`;
+        });
+      }
+
+      pollSection.innerHTML = html;
+
+      pollSection.querySelectorAll('.js-poll-vote').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const optId = btn.dataset.optId;
+          try {
+            const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/poll/vote`, {
+              method:'POST', credentials:'same-origin',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({option_id: optId}),
+            });
+            const data = await res.json();
+            if(data.status === 'SUCCESS') loadPoll();
+            else alert(data.message || 'Vote failed.');
+          } catch(e){ console.error(e); alert('An error occurred.'); }
+        });
+      });
+
+      const unvoteBtn = document.getElementById('poll-unvote');
+      if(unvoteBtn){
+        unvoteBtn.addEventListener('click', async () => {
+          try {
+            const res  = await fetch(`/api/announcements/${encodeURIComponent(postId)}/poll/vote`, { method:'DELETE', credentials:'same-origin' });
+            const data = await res.json();
+            if(data.status === 'SUCCESS') loadPoll();
+            else alert(data.message || 'Failed.');
+          } catch(e){ console.error(e); alert('An error occurred.'); }
+        });
+      }
+    }
+
+    loadPoll();
+  })();
+
+})();
+
+// ── Print Modal ──
+function openPrintModal(){
+  const modal = document.getElementById('printModal');
+  modal.classList.add('open');
+  document.addEventListener('keydown', _printEsc);
+}
+function closePrintModal(){
+  document.getElementById('printModal').classList.remove('open');
+  document.removeEventListener('keydown', _printEsc);
+}
+function _printEsc(e){ if(e.key === 'Escape') closePrintModal(); }
+function executePrint(){
+  document.body.classList.toggle('print-hide-comments',    !document.getElementById('printIncludeComments').checked);
+  document.body.classList.toggle('print-hide-poll',        !document.getElementById('printIncludePoll').checked);
+  document.body.classList.toggle('print-hide-attachments', !document.getElementById('printIncludeAttachments').checked);
+  closePrintModal();
+  // Small delay so modal fully hides before print dialog opens
+  setTimeout(() => {
+    window.print();
+  }, 150);
+}
+// Close modal on backdrop click
+document.getElementById('printModal').addEventListener('click', function(e){
+  if(e.target === this) closePrintModal();
+});
+</script>
+{% endblock %}

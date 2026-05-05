@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DYB NET Evaluation Report</title>
+{# Google Fonts를 Base64 내장 폰트로 대체 - WeasyPrint는 외부 URL 폰트를 못 불러옴 #}
+<style>
+  @font-face {
+    font-family: 'Noto Sans CJK KR';
+    src: local('Noto Sans CJK KR'),
+         url('file:///usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc') format('truetype'),
+         url('file:///usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc') format('truetype');
+    font-weight: normal;
+  }
+  @font-face {
+    font-family: 'Noto Sans CJK KR';
+    src: local('Noto Sans CJK KR Bold'),
+         url('file:///usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc') format('truetype'),
+         url('file:///usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc') format('truetype');
+    font-weight: bold;
+  }
+  /* WeasyPrint용: 시스템 sans-serif 폰트 사용 */
+  :root {
+    --red: #B01116;
+    --red-dark: #7a0b0f;
+    --red-light: #fdf3f3;
+    --red-mid: #f5d0d1;
+    --gray-900: #1a1a1a;
+    --gray-700: #3d3d3d;
+    --gray-500: #4a4a4a;
+    --gray-300: #a8a8a8;
+    --gray-100: #ebebeb;
+    --white: #ffffff;
+    /* PDF 결과지 전용 시맨틱 토큰 — 디자인 변경 시 단일 진입점 */
+    --qa-bg-question:    #fef3f2;
+    --qa-text-secondary: #374151;
+    --qld-text-strong:   #1f2937;
+    --qld-text-soft:     #6b7280;
+    --manual-border:     #ffc107;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'NanumGothic', sans-serif; background: white; color: var(--gray-900); font-size: 13px; }
+  .score-num, .metric-val, .s-val, .q-score-num-detail, .p2-title { font-family: 'Noto Serif CJK KR', 'Noto Serif', serif; }
+  .page { width: 200mm; min-height: 267mm; background: var(--white); position: relative; overflow: visible; page-break-after: always; }
+  .page:last-child { page-break-after: auto; min-height: 0; }
+  .page-2 { min-height: 0; padding-bottom: 0; }
+
+  /* PAGE 1 */
+  .p1-header { background: var(--red); padding: 28px 36px 24px; position: relative; overflow: hidden; }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  .logo-area { display: flex; align-items: center; gap: 10px; }
+  .logo-text { font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 0.12em; text-transform: uppercase; line-height: 1.4; }
+  .logo-text strong { display: block; color: rgba(255,255,255,0.9); font-size: 13px; letter-spacing: 0.06em; font-weight: 700; }
+  .eval-meta { text-align: right; }
+  .eval-period { font-size: 10px; color: rgba(255,255,255,0.45); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+  .eval-title { font-size: 18px; color: white; font-weight: 700; }
+  .rank-badge { display: inline-block; background: rgba(255,255,255,0.15); color: white; font-size: 9px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; margin-top: 5px; border: 1px solid rgba(255,255,255,0.4); }
+  .header-profile { display: flex; align-items: flex-end; gap: 20px; }
+  .avatar { width: 72px; height: 72px; border-radius: 50%; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; font-size: 26px; color: rgba(255,255,255,0.7); flex-shrink: 0; font-weight: 700; }
+  .profile-info { flex: 1; }
+  .profile-name { font-size: 28px; color: white; font-weight: 700; line-height: 1.1; margin-bottom: 6px; }
+  .profile-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+  .meta-chip { font-size: 11px; color: rgba(255,255,255,0.55); display: flex; align-items: center; gap: 5px; }
+  .meta-chip span { color: rgba(255,255,255,0.85); font-weight: 500; }
+  .meta-dot { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,0.25); }
+  .manual-warning-banner { background: #fff8e1; border: 1px solid #ffc107; border-radius: 6px; padding: 8px 14px; margin: 10px 36px 0; font-size: 10px; color: #7b5e00; display: flex; align-items: flex-start; gap: 8px; }
+
+  /* SCORE BANNER */
+  .score-banner { background: var(--red-light); border-bottom: 1px solid var(--red-mid); padding: 18px 36px; display: flex; align-items: center; }
+  .score-main { flex: 0 0 auto; padding-right: 32px; margin-right: 32px; border-right: 1px solid var(--red-mid); }
+  .score-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--gray-500); margin-bottom: 2px; }
+  .score-num { font-size: 44px; color: var(--red); line-height: 1; font-weight: 700; }
+  .score-max { font-size: 16px; color: var(--red-mid); vertical-align: super; }
+  .score-metrics { display: flex; flex: 1; justify-content: space-around; align-items: center; }
+  .metric-item { text-align: center; flex: 1; }
+  .metric-val { font-size: 22px; color: var(--gray-900); line-height: 1; font-weight: 700; }
+  .metric-val.highlight { color: var(--red); }
+  .metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-700); margin-top: 4px; font-weight: 600; }
+  .metric-sub { font-size: 10px; color: var(--gray-500); margin-top: 2px; font-weight: 500; }
+
+  /* EVALUATOR BLOCKS */
+  .blocks-section { padding: 22px 36px 20px; }
+  .section-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--gray-500); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .blocks-grid { overflow: hidden; }
+  .eval-block { border: 1px solid var(--gray-300); border-radius: 10px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; float: left; width: calc(50% - 6px); margin-right: 12px; margin-bottom: 12px; }
+  .eval-block:nth-child(2n) { margin-right: 0; }
+  .eval-block.full-width { float: none; width: 100%; margin-right: 0; clear: both; }
+  .block-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--gray-300); background: var(--gray-100); }
+  .block-role { font-size: 11px; font-weight: 600; color: var(--gray-900); }
+  .block-rater { font-size: 10px; color: var(--gray-500); }
+  .rater-name { font-weight: 700; color: var(--gray-900); }
+  .manual-badge { font-size: 8px; font-weight: 700; background: #fff3cd; color: #856404; border: 1px solid #ffc107; border-radius: 3px; padding: 0px 4px; margin-left: 4px; line-height: 1.4; display: inline-block; vertical-align: middle; }
+  .block-body { padding: 10px 14px; display: flex; gap: 14px; align-items: stretch; min-height: 110px; }
+  .questions-col { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+  .q-row { display: flex; align-items: center; gap: 8px; }
+  .q-label { font-size: 9px; color: var(--gray-500); width: 16px; flex-shrink: 0; }
+  .q-bar-wrap { flex: 1; height: 5px; background: var(--gray-300); border-radius: 3px; overflow: hidden; }
+  .q-bar { height: 100%; border-radius: 3px; background: var(--red); }
+  .q-score { font-size: 10px; font-weight: 600; color: var(--gray-700); width: 20px; text-align: right; flex-shrink: 0; }
+  .scores-col { border-left: 1px solid var(--gray-300); padding-left: 14px; min-width: 80px; display: flex; flex-direction: column; justify-content: space-between; }
+  .s-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--gray-500); margin-bottom: 1px; }
+  .s-val { font-size: 18px; color: var(--gray-900); line-height: 1; font-weight: 700; }
+  .s-val.red { color: var(--red); }
+  .rank-chip { display: inline-flex; align-items: center; background: var(--red-light); border: 1px solid var(--red-mid); border-radius: 4px; padding: 2px 6px; font-size: 9px; color: var(--red-dark); font-weight: 600; margin-top: 2px; }
+
+  /* KT multi-rater */
+  .kt-raters { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .kt-rater-chip { font-size: 9px; background: var(--gray-100); border: 1px solid var(--gray-300); border-radius: 4px; padding: 2px 7px; color: var(--gray-700); }
+  .kt-summary-bar { display: flex; gap: 20px; padding: 10px 14px; background: var(--red-light); border-radius: 8px; border: 1px solid var(--red-mid); align-items: center; }
+
+  /* PAGE 2 */
+  .p2-header { background: var(--gray-100); border-bottom: 2px solid var(--red); padding: 16px 36px; display: flex; justify-content: space-between; align-items: center; }
+  .p2-title { font-size: 15px; color: var(--gray-900); font-weight: 700; }
+  .p2-name { font-size: 11px; color: var(--gray-500); }
+  .detail-section { padding: 20px 36px; border-bottom: 1px solid var(--gray-300); }
+  .detail-role-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; page-break-after: avoid; break-after: avoid; }
+  .role-pill { background: var(--gray-900); color: white; font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; }
+  .role-pill.gs { background: #2563eb; }
+  .role-pill.kt { background: #059669; }
+  .role-pill.bm { background: #7c3aed; }
+  .role-pill.tl { background: var(--red); }
+  .q-detail-row { display: flex; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--gray-300); page-break-inside: avoid; break-inside: avoid; }
+  .q-detail-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .q-num-badge { width: 20px; height: 20px; border-radius: 50%; background: var(--gray-100); border: 1px solid var(--gray-300); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; color: var(--gray-500); flex-shrink: 0; margin-top: 1px; }
+  .q-detail-text { flex: 1; }
+  .q-text-ko { font-size: 10.5px; color: var(--gray-700); line-height: 1.5; margin-bottom: 2px; }
+  .q-text-en { font-size: 10px; color: var(--gray-500); line-height: 1.45; font-style: italic; }
+  .q-level-desc { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; padding: 4px 8px; background: var(--qa-bg-question); border-left: 3px solid #B01116; border-radius: 3px; page-break-inside: avoid; page-break-before: avoid; break-inside: avoid; break-before: avoid; }
+  .qld-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .qld-ko { font-size: 9.5px; color: var(--qld-text-strong); line-height: 1.35; }
+  .qld-en { font-size: 9px; color: var(--qld-text-soft); line-height: 1.3; font-style: italic; }
+  .q-score-display { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; min-width: 60px; }
+  .q-score-bar-v { display: flex; gap: 3px; align-items: flex-end; height: 28px; }
+  .bar-seg { width: 6px; border-radius: 2px; background: var(--gray-300); }
+  .bar-seg.filled { background: var(--red); }
+  .q-score-num-detail { font-size: 16px; color: var(--gray-900); font-weight: 700; }
+
+  /* Open-ended / Comments — shared rater pill */
+  .rater-pill { display: inline-flex; align-items: center; background: var(--red); color: #fff; font-size: 9px; font-weight: 700; letter-spacing: 0.08em; padding: 3px 10px; border-radius: 20px; }
+  .lang-label { font-size: 8.5px; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+
+  /* Open-ended / Comments — section header */
+  .oc-header { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--gray-500); font-weight: 600; margin-bottom: 10px; page-break-after: avoid; break-after: avoid; }
+  .oc-rater-group { margin-bottom: 12px; }
+  .oc-rater-row { margin-bottom: 8px; display: flex; align-items: center; gap: 6px; page-break-after: avoid; break-after: avoid; }
+
+  /* Open-ended Q/A card */
+  .oq-card { margin-bottom: 8px; border: 1px solid var(--gray-300); border-radius: 6px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
+  .oq-q { background: var(--qa-bg-question); border-left: 3px solid var(--red); padding: 8px 12px; }
+  .oq-q-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--red); font-weight: 700; margin-bottom: 3px; }
+  .oq-q-ko { font-size: 10px; font-weight: 600; color: var(--gray-900); line-height: 1.45; }
+  .oq-q-en { font-size: 9px; color: var(--gray-500); font-style: italic; line-height: 1.4; margin-top: 2px; }
+  .oq-a { background: #fff; padding: 10px 12px; }
+  .oq-a-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--gray-500); font-weight: 700; margin-bottom: 4px; }
+  .oq-a-lang-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--gray-500); font-weight: 700; margin-bottom: 3px; }
+  .oq-a-block--first .oq-a-text { font-size: 10.5px; color: var(--gray-900); line-height: 1.65; }
+  .oq-a-block--second { margin-top: 8px; }
+  .oq-a-block--second.oq-a-block--has-both { padding-top: 8px; border-top: 1px dashed var(--gray-300); }
+  .oq-a-block--second .oq-a-text { font-size: 10px; color: var(--qa-text-secondary); line-height: 1.6; }
+
+  /* Comments cards */
+  .cmt-card { margin-bottom: 8px; border: 1px solid var(--gray-300); border-radius: 6px; padding: 10px 12px; page-break-inside: avoid; break-inside: avoid; }
+  .cmt-card--ko { background: var(--gray-100); }
+  .cmt-card--en { background: #fff; }
+  .cmt-header { margin-bottom: 6px; display: flex; align-items: center; gap: 6px; page-break-after: avoid; break-after: avoid; }
+  .cmt-text { font-size: 10px; color: var(--gray-900); line-height: 1.6; }
+
+  @page {
+    size: A4;
+    margin: 5mm 5mm 25mm 5mm;
+    @bottom-left { content: "DYB Education · NHR"; font-size: 9px; color: #6b6b6b; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; font-family: 'Noto Sans CJK KR', sans-serif; padding-left: 36px; }
+    @bottom-center { content: "Confidential — For Internal Use Only"; font-size: 9px; color: #6b6b6b; font-family: 'Noto Sans CJK KR', sans-serif; }
+    @bottom-right { content: counter(page) " / " counter(pages); font-size: 9px; color: #6b6b6b; font-family: 'Noto Sans CJK KR', sans-serif; padding-right: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════ PAGE 1 ══════════════════════ -->
+<div class="page">
+  <div class="p1-header">
+    <div class="header-top">
+      <div class="logo-area">
+        {% if logo_uri %}<img src="{{ logo_uri }}" alt="DYB" style="height:40px;width:auto;display:block;" />{% endif %}
+      </div>
+      <div class="eval-meta">
+        <div class="eval-period">Evaluation Period</div>
+        <div class="eval-title">{{ session_label }}</div>
+        <div class="rank-badge">{{ eval_type_label }}</div>
+      </div>
+    </div>
+    <div class="header-profile">
+      <div class="avatar">{{ initials }}</div>
+      <div class="profile-info">
+        <div class="profile-name">{{ teacher_name }}</div>
+        <div class="profile-meta">
+          {% if nickname %}<div class="meta-chip" style="font-style:italic;opacity:0.7;">{{ nickname }}</div><div class="meta-dot"></div>{% endif %}
+          <div class="meta-chip">ID <span>{{ emp_id|upper }}</span></div>
+          <div class="meta-dot"></div>
+          <div class="meta-chip">Campus <span style="white-space:nowrap;">{{ campus }}</span></div>
+          {% if start_date %}
+          <div class="meta-dot"></div>
+          <div class="meta-chip">Since <span>{{ start_date }}</span></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if has_manual %}
+  <div class="manual-warning-banner">
+    ⚠️ 이 평가 결과에는 관리자가 직접 입력한 점수가 포함되어 있습니다.
+    해당 역할: {{ manual_roles|join(', ') }}
+  </div>
+  {% endif %}
+  
+
+  <!-- Score Banner -->
+  <div class="score-banner">
+    <div class="score-main">
+      <div class="score-label">Total Score</div>
+      <div class="score-num">{{ overall_score }}<span class="score-max" style="color:var(--gray-700);">/5</span></div>
+    </div>
+    <div class="score-metrics">
+      <div class="metric-item">
+        <div class="metric-val highlight">{{ rank_all }}<span style="font-size:13px;color:var(--gray-500);"> / {{ total_all }}</span></div>
+        <div class="metric-label">All Campus Rank</div>
+        <div class="metric-sub">Top {{ rank_all_pct }}%</div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-val">{{ rank_campus }}<span style="font-size:13px;color:var(--gray-500);"> / {{ total_campus }}</span></div>
+        <div class="metric-label">Within-Campus Rank</div>
+        <div class="metric-sub">Top {{ rank_campus_pct }}%</div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-val">{{ weighted_score_100 }}<span style="font-size:13px;color:var(--gray-500);">pt</span></div>
+        <div class="metric-label">Weighted Score</div>
+        <div class="metric-sub">100pt scale</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Evaluator Blocks -->
+  <div class="blocks-section">
+    <div class="section-title">Evaluation by Role</div>
+    <div class="blocks-grid">
+
+      {% for role_block in role_blocks %}
+
+      {# 단일 평가자: grid 2열 중 하나 차지, 단일 블록이 1개뿐이면 full-width #}
+      {% if role_block.raters|length == 1 %}
+      <div class="eval-block {% if role_block.full_width %}full-width{% endif %}">
+        <div class="block-header">
+          <div class="block-role">{{ role_block.label }}</div>
+          <div class="block-rater">
+            Evaluated by <span class="rater-name" {% if role_block.raters[0].is_manual %}style="border-bottom:2px solid var(--manual-border);padding-bottom:1px;"{% endif %}>{{ role_block.raters[0].name }}</span>
+          </div>
+        </div>
+        <div class="block-body">
+          <div class="questions-col">
+            {% for q in role_block.raters[0].scores %}
+            <div class="q-row">
+              <span class="q-label">Q{{ loop.index }}</span>
+              <div class="q-bar-wrap"><div class="q-bar" style="width:{{ (q.score/5*100)|int }}%"></div></div>
+              <span class="q-score">{{ q.score }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="scores-col">
+            <div>
+              <div class="s-label">Avg</div>
+              <div class="s-val red">{{ role_block.avg }}</div>
+            </div>
+            <div>
+              <div class="s-label">Weighted</div>
+              <div class="s-val">{{ role_block.weighted }}</div>
+            </div>
+            <div>
+              <div class="s-label">Rank</div>
+              <div class="rank-chip">{{ rank_all }} / {{ total_all }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# 복수 평가자: full-width, rater 수에 따라 grid 열 분배 #}
+      {% else %}
+      <div class="eval-block full-width">
+        <div class="block-header">
+          <div class="block-role">{{ role_block.label }}</div>
+          <div class="block-rater">
+            <span style="font-size:10px;color:var(--gray-500);">{{ role_block.raters|length }} Raters</span>
+          </div>
+        </div>
+        <div class="block-body" style="flex-direction:column;gap:10px;">
+          {% set cols = 3 if role_block.raters|length <= 3 else 2 %}
+          <div style="display:grid;grid-template-columns:repeat({{ cols }},1fr);gap:8px;width:100%;">
+            {% for r in role_block.raters %}
+            <div style="padding:10px 12px;background:var(--white);border-radius:8px;{% if r.is_manual %}border:2px solid var(--manual-border);{% else %}border:1px solid var(--gray-300);{% endif %}">
+              <div style="font-size:10px;color:var(--gray-900);margin-bottom:8px;font-weight:700;word-break:break-word;">{{ r.name }}</div>
+              {% for q in r.scores %}
+              <div class="q-row">
+                <span class="q-label">Q{{ loop.index }}</span>
+                <div class="q-bar-wrap"><div class="q-bar" style="width:{{ (q.score/5*100)|int }}%"></div></div>
+                <span class="q-score">{{ q.score }}</span>
+              </div>
+              {% endfor %}
+              <div style="margin-top:8px;padding-top:7px;border-top:1px solid var(--gray-300);font-size:10px;display:flex;justify-content:space-between;color:var(--gray-700);">
+                <span>Avg</span><strong style="color:var(--gray-900);">{{ r.avg }}</strong>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="kt-summary-bar">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gray-500);white-space:nowrap;">{{ role_block.label }} Summary</div>
+            <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+              <span style="font-size:9px;color:var(--gray-500);">Mean Avg</span>
+              <span style="font-size:18px;color:var(--red);font-weight:700;">{{ role_block.avg }}</span>
+            </div>
+            <div style="width:1px;height:20px;background:var(--red-mid);flex-shrink:0;"></div>
+            <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin-left:auto;">
+              <span style="font-size:9px;color:var(--gray-500);">Weighted</span>
+              <span style="font-size:18px;color:var(--gray-900);font-weight:700;">{{ role_block.weighted }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% endfor %}
+
+    </div>
+  </div>
+
+
+</div>
+
+  
+</div>
+
+
+<!-- ══════════════════════ PAGE 2 ══════════════════════ -->
+<div class="page page-2">
+  <div class="p2-header">
+    <div>
+      <div class="p2-title">Evaluation Detail — Question Breakdown</div>
+      <div class="p2-name">{{ teacher_name }} · {{ emp_id|upper }} · {{ campus }} · {{ eval_type_label }} · {{ session_label }}</div>
+    </div>
+    <div style="font-size:9px;color:var(--gray-500);letter-spacing:0.1em;text-transform:uppercase;">Confidential</div>
+  </div>
+  
+
+  {% for role_detail in role_details %}
+  <div class="detail-section">
+    <div class="detail-role-title">
+      <div class="role-pill {{ role_detail.pill_class }}">{{ role_detail.label }}</div>
+      <span style="font-size:11px;color:var(--gray-700);font-weight:600;">{% for r in role_detail.raters %}{{ r }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+      <span style="font-size:9px;background:var(--red-light);color:var(--red);border:1px solid var(--red-mid);border-radius:20px;padding:2px 8px;font-weight:700;">Avg {{ role_detail.avg }}</span>
+    </div>
+
+    {% if role_detail.rater_details|length > 1 %}
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">
+      {% for rd in role_detail.rater_details %}
+      <div style="padding:5px 12px;background:var(--gray-100);border-radius:6px;{% if rd.is_manual %}border:2px solid var(--manual-border);{% else %}border:1px solid var(--gray-300);{% endif %}display:flex;align-items:center;gap:10px;">
+        <span style="font-size:10px;font-weight:700;color:var(--gray-900);white-space:nowrap;min-width:90px;">{{ rd.name }}</span>
+        <span style="font-size:9px;color:var(--gray-700);flex:1;white-space:nowrap;">{% for s in rd.scores %}Q{{ loop.index }}: {{ s|int }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        <span style="font-size:9px;font-weight:700;color:var(--red);white-space:nowrap;">Avg {{ rd.avg }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="font-size:9px;color:var(--gray-500);margin-bottom:10px;padding:5px 8px;background:var(--gray-100);border-radius:4px;">※ Below scores are averages across multiple evaluators.</div>
+    {% endif %}
+
+    {% for q in role_detail.questions %}
+    <div class="q-detail-row">
+      <div class="q-num-badge">{{ loop.index }}</div>
+      <div class="q-detail-text">
+        <div class="q-text-ko">{{ q.ko }}</div>
+        {% if q.en %}<div class="q-text-en">{{ q.en }}</div>{% endif %}
+        {% if q.level_description %}
+        <div class="q-level-desc">
+          <span class="qld-text">
+            {% if q.level_description.ko %}<span class="qld-ko">{{ q.level_description.ko }}</span>{% endif %}
+            {% if q.level_description.en %}<span class="qld-en">{{ q.level_description.en }}</span>{% endif %}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="q-score-display">
+        <div class="q-score-bar-v">
+          {% for i in range(1, (q.max_score or 5) + 1) %}
+          <div class="bar-seg {% if i <= q.avg_score|int %}filled{% endif %}" style="height:{{ i*6 }}px"></div>
+          {% endfor %}
+        </div>
+        <div class="q-score-num-detail">{{ q.avg_score }}</div>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if role_detail.open_answers_by_rater or role_detail.comments_ko or role_detail.comments_en %}
+    {% macro lang_block(text, label, position, has_both) %}
+      {% if text %}
+      <div class="oq-a-block oq-a-block--{{ position }}{% if has_both %} oq-a-block--has-both{% endif %}">
+        {% if has_both %}<div class="oq-a-lang-label">{{ label }}</div>{% endif %}
+        <div class="oq-a-text">{{ text }}</div>
+      </div>
+      {% endif %}
+    {% endmacro %}
+    <div style="margin-top:14px;border-top:1px dashed var(--gray-300);padding-top:12px;">
+      <div class="oc-header">Open-ended / Comments</div>
+      {% for oq_rater in role_detail.open_answers_by_rater %}
+      <div class="oc-rater-group">
+        <div class="oc-rater-row">
+          <span class="rater-pill">{{ oq_rater.rater }}</span>
+        </div>
+        {% for ans in oq_rater.answers %}
+        <div class="oq-card">
+          <div class="oq-q">
+            <div class="oq-q-label">Question</div>
+            <div class="oq-q-ko">{{ ans.q_ko }}</div>
+            {% if ans.q_en %}<div class="oq-q-en">{{ ans.q_en }}</div>{% endif %}
+          </div>
+          <div class="oq-a">
+            <div class="oq-a-label">Answer</div>
+            {% set has_both = ans.answer_ko and ans.answer_en %}
+            {% if ans.orig_lang == 'ko' %}
+              {{ lang_block(ans.answer_ko, 'KR', 'first', has_both) }}
+              {{ lang_block(ans.answer_en, 'ENG', 'second', has_both) }}
+            {% else %}
+              {{ lang_block(ans.answer_en, 'ENG', 'first', has_both) }}
+              {{ lang_block(ans.answer_ko, 'KR', 'second', has_both) }}
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% for c in role_detail.comments_ko %}
+      <div class="cmt-card cmt-card--ko">
+        <div class="cmt-header">
+          <span class="rater-pill">{{ c.rater }}</span>
+          <span class="lang-label">KR</span>
+        </div>
+        <div class="cmt-text">{{ c.text }}</div>
+      </div>
+      {% endfor %}
+      {% for c in role_detail.comments_en %}
+      <div class="cmt-card cmt-card--en">
+        <div class="cmt-header">
+          <span class="rater-pill">{{ c.rater }}</span>
+          <span class="lang-label">ENG</span>
+        </div>
+        <div class="cmt-text">{{ c.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  </div>
+
+</body>
+</html>

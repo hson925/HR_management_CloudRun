@@ -1,0 +1,309 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | Announcements{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* 게시글 카드 hover — 붉은 테두리 + 왼쪽 액센트 */
+  #announcements-list .group:hover .ann-card {
+    border-color: var(--primary) !important;
+    box-shadow: 0 8px 28px rgba(176,17,22,.18), inset 4px 0 0 var(--primary) !important;
+    background: rgba(176,17,22,.03) !important;
+    transform: translateY(-2px);
+  }
+  #announcements-list .group:hover .ann-num {
+    color: var(--primary) !important;
+    transform: scale(1.12);
+  }
+  #announcements-list .group:hover .ann-title {
+    color: var(--primary) !important;
+  }
+  .ann-card {
+    transition: border-color .18s, box-shadow .18s, background .18s, transform .18s;
+  }
+  .ann-num  { transition: color .18s, transform .18s; }
+  .ann-title { transition: color .18s; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[1100px] mx-auto animate-fade-in pb-8">
+
+  <div class="flex items-center justify-between mb-5">
+    <div class="flex items-center gap-3">
+      <div class="p-2 bg-[var(--primary)]/10 rounded-lg border border-[var(--primary)]/20">
+        <i class="bi bi-megaphone-fill text-lg text-[var(--primary)]"></i>
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight text-gray-900">Announcements</h1>
+        <p class="text-xs text-gray-500 mt-0.5">공지사항</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="mark-all-read-btn"
+              class="hidden inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-600 hover:text-[var(--primary)] hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors">
+        <i class="bi bi-check2-all"></i>
+        <span>Mark all as read</span>
+      </button>
+      {% if is_admin %}
+      <a href="/admin/announcements/new"
+         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm font-semibold hover:bg-[#8a0e12] transition-colors shadow-sm">
+        <i class="bi bi-pencil-square"></i>
+        <span>New Post</span>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Search + controls row -->
+  <div class="flex flex-wrap items-center gap-3 mb-4">
+    <div class="relative flex-1 min-w-[200px] max-w-[420px]">
+      <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+      <input type="text" id="search-input" placeholder="Search title or content..."
+             class="w-full pl-9 pr-8 py-2 text-sm border-2 border-gray-200 rounded-lg focus:outline-none focus:border-[var(--primary)] bg-white transition-colors">
+      <button id="search-clear" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5">
+        <i class="bi bi-x-lg text-xs"></i>
+      </button>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="text-xs text-gray-500 whitespace-nowrap">Per page:</label>
+      <select id="page-size-select"
+              class="text-sm border-2 border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:border-[var(--primary)] bg-white cursor-pointer">
+        <option value="10">10</option>
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+    <div id="status-text" class="text-xs text-gray-400 ml-auto"></div>
+  </div>
+
+  <div id="loading-state" class="text-center py-10 text-gray-400 text-sm">
+    <i class="bi bi-arrow-repeat animate-spin"></i> Loading...
+  </div>
+
+  <div id="announcements-list" class="space-y-2"></div>
+
+  <div id="empty-state" class="hidden text-center py-20 text-gray-400 text-sm">
+    No announcements found.
+  </div>
+
+  <div id="pagination" class="mt-5 flex items-center justify-center gap-1.5 flex-wrap"></div>
+</div>
+
+<script>
+(function(){
+  const listEl      = document.getElementById('announcements-list');
+  const emptyEl     = document.getElementById('empty-state');
+  const loadingEl   = document.getElementById('loading-state');
+  const searchInput = document.getElementById('search-input');
+  const searchClear = document.getElementById('search-clear');
+  const pageSizeEl  = document.getElementById('page-size-select');
+  const statusEl    = document.getElementById('status-text');
+  const paginationEl= document.getElementById('pagination');
+
+  let allItems      = [];
+  let filteredItems = [];
+  let currentPage   = 1;
+  let pageSize      = 20;
+  let searchQuery   = '';
+  let lastReadAt    = null;
+
+  function esc(s){
+    return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderItem(a, num){
+    const date = (a.created_at || '').slice(0,10);
+    const isUnread = !lastReadAt || (a.created_at && a.created_at > lastReadAt);
+    const unreadDot = isUnread
+      ? '<span class="w-2 h-2 rounded-full bg-[var(--primary)] shrink-0 inline-block" title="Unread"></span>' : '';
+    const newBadge = a.is_new
+      ? '<span class="bg-[var(--primary)]/10 text-[var(--primary)] text-[10px] px-1.5 py-0.5 rounded font-bold">NEW</span>' : '';
+    const pinBadge = a.pinned
+      ? '<span class="bg-[var(--primary)]/10 text-[var(--primary)] text-[10px] px-1.5 py-0.5 rounded font-bold"><i class="bi bi-pin-angle-fill"></i> Pinned</span>' : '';
+    const draftBadge = (a.status === 'draft')
+      ? '<span class="bg-gray-100 text-gray-500 text-[10px] px-1.5 py-0.5 rounded font-bold border border-gray-300"><i class="bi bi-file-earmark"></i> Draft</span>' : '';
+    const hiddenBadge = (a.status === 'hidden')
+      ? '<span class="bg-orange-50 text-orange-600 text-[10px] px-1.5 py-0.5 rounded font-bold border border-orange-200"><i class="bi bi-eye-slash"></i> Hidden</span>' : '';
+    const icons = [];
+    if(a.images_count)      icons.push(`<span class="text-gray-500 text-[11px]"><i class="bi bi-image"></i> ${a.images_count}</span>`);
+    if(a.attachments_count) icons.push(`<span class="text-gray-500 text-[11px]"><i class="bi bi-paperclip"></i> ${a.attachments_count}</span>`);
+    if(a.youtube_count)     icons.push(`<span class="text-gray-500 text-[11px]"><i class="bi bi-youtube"></i> ${a.youtube_count}</span>`);
+    if(a.poll_enabled)      icons.push(`<span class="text-gray-500 text-[11px]"><i class="bi bi-bar-chart-fill"></i> Poll</span>`);
+    const pinnedBg = a.pinned ? 'bg-[var(--primary)]/[0.03]' : '';
+    return `
+      <div class="group flex items-center gap-0 cursor-pointer" onclick="location.href='/announcements/${encodeURIComponent(a.id)}'">
+        <div class="ann-num w-10 shrink-0 text-center text-[13px] font-black text-gray-800 select-none">${num}</div>
+        <div class="ann-card flex-1 bg-white rounded-xl border-2 border-gray-200 ${pinnedBg} pl-5 pr-5 py-3.5">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-2 min-w-0">
+              ${draftBadge}
+              ${hiddenBadge}
+              ${pinBadge}
+              ${newBadge}
+              <span class="text-xs font-bold text-gray-900 shrink-0">${esc(date)}</span>
+              <span class="text-[11px] font-semibold text-gray-800 truncate">${esc(a.author_name || '')}</span>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 ml-2">${icons.join('')}</div>
+          </div>
+          <h3 class="ann-title text-[16px] font-bold text-gray-900 leading-snug truncate flex items-center gap-2">${unreadDot}<span class="truncate">${esc(a.title)}</span></h3>
+        </div>
+      </div>`;
+  }
+
+  function applyFilter(){
+    const q = searchQuery.toLowerCase();
+    filteredItems = !q ? allItems.slice() : allItems.filter(a =>
+      (a.title          || '').toLowerCase().includes(q) ||
+      (a.preview        || '').toLowerCase().includes(q) ||
+      (a.author_name    || '').toLowerCase().includes(q) ||
+      (a.comment_authors|| '').toLowerCase().includes(q)
+    );
+    currentPage = 1;
+    renderPage();
+    renderPagination();
+    updateStatus();
+  }
+
+  function renderPage(){
+    const start = (currentPage - 1) * pageSize;
+    const page  = filteredItems.slice(start, start + pageSize);
+    listEl.innerHTML = '';
+    if(!page.length){
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+    emptyEl.classList.add('hidden');
+    page.forEach((a, idx) => listEl.insertAdjacentHTML('beforeend', renderItem(a, start + idx + 1)));
+  }
+
+  function renderPagination(){
+    const total = Math.ceil(filteredItems.length / pageSize);
+    paginationEl.innerHTML = '';
+    if(total <= 1) return;
+
+    const base    = 'px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition-all';
+    const active  = `${base} bg-[var(--primary)] text-white border-[var(--primary)]`;
+    const normal  = `${base} bg-white text-gray-600 border-gray-200 hover:border-[var(--primary)]/50 hover:text-[var(--primary)]`;
+    const disabled= `${base} bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed`;
+
+    function mkBtn(label, page, cls, dis){
+      const b = document.createElement('button');
+      b.innerHTML = label;
+      b.className = cls;
+      if(dis) b.disabled = true;
+      else b.onclick = () => { currentPage = page; renderPage(); renderPagination(); window.scrollTo({top:0,behavior:'smooth'}); };
+      return b;
+    }
+
+    paginationEl.appendChild(mkBtn('<i class="bi bi-chevron-left"></i>', currentPage-1, currentPage===1?disabled:normal, currentPage===1));
+
+    let pages = [];
+    if(total <= 7){ pages = Array.from({length:total},(_,i)=>i+1); }
+    else {
+      pages = [1];
+      if(currentPage > 3) pages.push('…');
+      for(let p=Math.max(2,currentPage-1); p<=Math.min(total-1,currentPage+1); p++) pages.push(p);
+      if(currentPage < total-2) pages.push('…');
+      pages.push(total);
+    }
+
+    pages.forEach(p => {
+      if(p === '…'){
+        const s = document.createElement('span');
+        s.textContent = '…'; s.className = 'px-1 text-gray-400 text-sm';
+        paginationEl.appendChild(s);
+      } else {
+        paginationEl.appendChild(mkBtn(p, p, p===currentPage?active:normal, false));
+      }
+    });
+
+    paginationEl.appendChild(mkBtn('<i class="bi bi-chevron-right"></i>', currentPage+1, currentPage===total?disabled:normal, currentPage===total));
+  }
+
+  function updateStatus(){
+    const total    = allItems.length;
+    const filtered = filteredItems.length;
+    statusEl.textContent = searchQuery
+      ? `${filtered} result${filtered!==1?'s':''} found (of ${total})`
+      : `${total} announcement${total!==1?'s':''}`;
+  }
+
+  // Search
+  searchInput.addEventListener('input', ()=>{
+    searchQuery = searchInput.value.trim();
+    searchClear.classList.toggle('hidden', !searchQuery);
+    applyFilter();
+  });
+  searchClear.addEventListener('click', ()=>{
+    searchInput.value = ''; searchQuery = '';
+    searchClear.classList.add('hidden');
+    applyFilter();
+    searchInput.focus();
+  });
+
+  // Page size
+  pageSizeEl.addEventListener('change', ()=>{
+    pageSize = parseInt(pageSizeEl.value, 10);
+    currentPage = 1;
+    renderPage();
+    renderPagination();
+  });
+
+  // Fetch last-read timestamp (best-effort)
+  async function loadLastRead(){
+    try {
+      const res = await fetch('/api/announcements/last-read', {credentials:'same-origin'});
+      const data = await res.json();
+      if(data.status === 'SUCCESS') lastReadAt = data.last_read_at;
+    } catch(e){ /* ignore */ }
+  }
+
+  // Mark all as read
+  const markAllBtn = document.getElementById('mark-all-read-btn');
+  markAllBtn.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/announcements/mark-read', {method:'POST', credentials:'same-origin'});
+      const data = await res.json();
+      if(data.status === 'SUCCESS'){
+        lastReadAt = data.last_read_at;
+        renderPage();
+        markAllBtn.classList.add('hidden');
+      }
+    } catch(e){ /* ignore */ }
+  });
+
+  // Load all items (fetch until done, max 200)
+  async function load(){
+    loadingEl.classList.remove('hidden');
+    await loadLastRead();
+    let cursor = '';
+    let done = false;
+    allItems = [];
+    while(!done && allItems.length < 200){
+      try {
+        const url = new URL('/api/announcements/list', location.origin);
+        url.searchParams.set('limit', '50');
+        if(cursor) url.searchParams.set('before', cursor);
+        const res  = await fetch(url.toString(), {credentials:'same-origin'});
+        const data = await res.json();
+        if(data.status !== 'SUCCESS'){ done = true; break; }
+        allItems = allItems.concat(data.items || []);
+        if(data.has_more && data.next_cursor){ cursor = data.next_cursor; }
+        else { done = true; }
+      } catch(e){ console.error(e); done = true; }
+    }
+    loadingEl.classList.add('hidden');
+    filteredItems = allItems.slice();
+    renderPage();
+    renderPagination();
+    updateStatus();
+    // Show "Mark all as read" button if there are any unread items
+    const hasUnread = allItems.some(a => !lastReadAt || (a.created_at && a.created_at > lastReadAt));
+    markAllBtn.classList.toggle('hidden', !hasUnread);
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

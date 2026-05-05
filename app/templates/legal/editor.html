@@ -1,0 +1,1151 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | 편집 — {{ meta.title }}{% endblock %}
+
+{% block extra_head %}
+<!-- Quill.js (로컬 서빙 — CDN 차단 환경 대응) -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/quill.snow.css') }}">
+<script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+<!-- DYB Datepicker -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dyb-datepicker.css') }}">
+<script src="{{ url_for('static', filename='js/dyb-datepicker.js') }}"></script>
+
+<style>
+  :root { --primary-dark: #870009; }
+
+  /* ── Editor layout ── */
+  .editor-wrap {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 20px;
+    align-items: start;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    .editor-wrap { grid-template-columns: 1fr; }
+  }
+
+  /* ── Article list sidebar ── */
+  .article-list-panel {
+    position: sticky; top: 88px;
+    background: var(--surface); border: 1px solid var(--outline-variant); border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,.07);
+  }
+  .panel-header {
+    padding: 12px 16px; background: var(--surface-low);
+    border-bottom: 1.5px solid var(--primary-dark);
+    font-size: .72rem; font-weight: 800; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--primary-dark);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .article-list { max-height: 480px; overflow-y: auto; }
+  .article-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; cursor: pointer; transition: background .12s;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .article-item:hover { background: var(--surface-low); }
+  .article-item.active { background: var(--primary-soft); border-left: 3px solid var(--primary-dark); }
+  .article-item.active .art-num { color: var(--primary-dark); }
+  .art-num {
+    font-size: .7rem; font-weight: 800; color: var(--text-dim);
+    min-width: 28px; flex-shrink: 0;
+  }
+  .art-label {
+    font-size: .78rem; color: var(--text); flex: 1;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .art-actions { display: flex; gap: 2px; flex-shrink: 0; }
+  .art-btn {
+    width: 22px; height: 22px; border-radius: 4px; border: none; background: none;
+    cursor: pointer; color: var(--text-dim); font-size: .65rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .1s, color .1s;
+  }
+  .art-btn:hover { background: var(--surface-low); color: var(--text); }
+  .panel-footer { padding: 10px 14px; border-top: 1px solid var(--border-soft); }
+  .btn-add-article {
+    width: 100%; padding: 8px; border-radius: 8px; font-size: .78rem; font-weight: 600;
+    background: var(--surface); color: var(--primary-dark); border: 1.5px dashed #fca5a5;
+    cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .btn-add-article:hover { background: var(--primary-soft); border-color: var(--primary-dark); }
+
+  /* ── Editor panel ── */
+  .editor-panel {
+    background: var(--surface); border: 1px solid var(--outline-variant); border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.07);
+    /* overflow:hidden 제거 — Quill 드롭다운(색상/크기 피커)이 패널 밖으로 나와야 함 */
+  }
+  .editor-panel-header {
+    border-radius: 12px 12px 0 0; /* 헤더만 모서리 유지 */
+  }
+  .editor-panel-header {
+    padding: 10px 20px; background: var(--surface-low);
+    border-bottom: 2px solid var(--primary-dark);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .article-num-badge {
+    padding: 4px 10px; background: var(--primary-soft); color: var(--primary-dark);
+    font-size: .72rem; font-weight: 800; border-radius: 9999px; white-space: nowrap;
+    border: 1px solid var(--primary-soft);
+  }
+  .btn-delete-article {
+    padding: 6px 12px; border-radius: 8px; font-size: .78rem; font-weight: 600;
+    background: var(--surface); color: #dc2626; border: 1.5px solid #fca5a5;
+    cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 4px;
+    white-space: nowrap; margin-left: auto;
+  }
+  .btn-delete-article:hover { background: #fef2f2; border-color: #dc2626; }
+
+  /* ── Title & body sections ── */
+  .editor-section { padding: 16px 20px; }
+  .editor-section + .editor-section {
+    border-top: 1px dashed #e4e4e7;
+    padding-top: 14px;
+  }
+  .editor-section-label {
+    display: flex; align-items: center; gap: 5px;
+    font-size: .67rem; font-weight: 800; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px;
+  }
+  .editor-section-label i { color: var(--primary-dark); font-size: .75rem; }
+  .article-title-input {
+    width: 100%; padding: 10px 14px; border-radius: 8px; font-size: 1rem; font-weight: 700;
+    border: 1.5px solid var(--outline-variant); outline: none; color: var(--text-strong);
+    transition: border-color .15s; box-sizing: border-box;
+  }
+  .article-title-input:focus { border-color: var(--primary-dark); box-shadow: 0 0 0 3px rgba(135,0,9,.07); }
+
+  /* ── Chapter inputs ── */
+  .chapter-row { display: flex; gap: 10px; align-items: stretch; }
+  .chapter-num-input {
+    width: 86px; padding: 10px 12px; border-radius: 8px; font-size: .9rem; font-weight: 700;
+    border: 1.5px solid var(--outline-variant); outline: none; color: var(--text-strong);
+    transition: border-color .15s; box-sizing: border-box; text-align: center;
+  }
+  .chapter-title-input {
+    flex: 1; padding: 10px 14px; border-radius: 8px; font-size: .95rem; font-weight: 600;
+    border: 1.5px solid var(--outline-variant); outline: none; color: var(--text-strong);
+    transition: border-color .15s; box-sizing: border-box;
+  }
+  .chapter-num-input:focus,
+  .chapter-title-input:focus { border-color: var(--primary-dark); box-shadow: 0 0 0 3px rgba(135,0,9,.07); }
+  .chapter-hint { font-size: .7rem; color: var(--text-dim); margin-top: 6px; }
+
+  /* ── Sidebar chapter divider ── */
+  .article-chapter-sep {
+    padding: 8px 14px 6px; font-size: .65rem; font-weight: 800;
+    letter-spacing: .06em; color: var(--primary-dark); background: var(--primary-soft);
+    border-top: 1px solid var(--primary-soft); border-bottom: 1px solid var(--primary-soft);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .article-chapter-sep .ch-num {
+    padding: 2px 7px; border-radius: 9999px; background: var(--primary-dark); color: #fff;
+    font-size: .6rem;
+  }
+  .article-chapter-sep .ch-ttl {
+    flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    color: var(--primary-dark);
+  }
+
+  /* Quill editor */
+  .ql-toolbar {
+    border: 2px solid var(--outline) !important;
+    border-radius: 8px 8px 0 0 !important;
+    background: var(--surface-low);
+    flex-wrap: wrap;
+    box-shadow: 0 2px 6px rgba(0,0,0,.08);
+  }
+  .ql-container {
+    border: 2px solid var(--outline) !important;
+    border-top: none !important;
+    border-radius: 0 0 8px 8px !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,.08), inset 0 1px 3px rgba(0,0,0,.04);
+  }
+  .ql-container.ql-snow:focus-within {
+    border-color: var(--primary-dark) !important;
+    box-shadow: 0 0 0 4px rgba(135,0,9,.13), 0 2px 6px rgba(0,0,0,.08) !important;
+  }
+  .ql-toolbar.ql-snow:has(+ .ql-container.ql-snow:focus-within) {
+    border-color: var(--primary-dark) !important;
+  }
+  .ql-editor { min-height: 340px; font-family: inherit; line-height: 1.8; }
+  /* Color picker swatches alignment */
+  .ql-color-picker .ql-picker-options,
+  .ql-background .ql-picker-options { padding: 4px; }
+  /* Size picker label */
+  .ql-size .ql-picker-label::before,
+  .ql-size .ql-picker-item::before { content: attr(data-value) !important; }
+  .ql-size .ql-picker-label[data-value='']::before,
+  .ql-size .ql-picker-item[data-value='']::before { content: '기본' !important; }
+
+  /* ── Top toolbar ── */
+  .top-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+    max-width: 1200px; margin-left: auto; margin-right: auto;
+  }
+  .meta-field {
+    display: flex; align-items: center; gap: 8px;
+    font-size: .82rem; color: var(--on-surface-variant);
+  }
+  .meta-input {
+    padding: 6px 10px; border-radius: 8px; font-size: .82rem;
+    border: 1.5px solid var(--outline-variant); outline: none;
+    transition: border-color .15s;
+  }
+  .meta-input:focus { border-color: var(--primary-dark); }
+  .btn-save {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 20px; border-radius: 8px; font-size: .85rem; font-weight: 700;
+    background: var(--primary-dark); color: #fff; border: none;
+    cursor: pointer; transition: all .15s;
+    box-shadow: 0 2px 8px rgba(135,0,9,.30);
+  }
+  .btn-save:hover { background: var(--primary-dark); }
+  .btn-save:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-preview {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px; border-radius: 8px; font-size: .82rem; font-weight: 600;
+    background: var(--surface); color: var(--on-surface-variant); border: 1.5px solid #a1a1aa;
+    cursor: pointer; transition: all .15s; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  .btn-preview:hover { border-color: var(--primary-dark); color: var(--primary-dark); }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 28px; right: 28px; z-index: 9999;
+    padding: 12px 20px; border-radius: 10px; font-size: .85rem; font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0,0,0,.15); display: none;
+    align-items: center; gap: 8px; animation: slideUp .2s ease;
+  }
+  @keyframes slideUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  #toast.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; display: flex; }
+  #toast.error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; display: flex; }
+  /* 다크 모드 시맨틱 변형 */
+  html[data-theme="dark"] #toast.success { background: rgba(34,197,94,.16); color: #86efac; border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] #toast.error   { background: rgba(220,38,38,.16); color: #fca5a5; border-color: rgba(220,38,38,.40); }
+  html[data-theme="dark"] .btn-delete-article:hover { background: rgba(220,38,38,.12) !important; border-color: #fca5a5 !important; }
+  /* Tailwind 시맨틱 다크 (페이지 사용분) */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50,
+  html[data-theme="dark"] .bg-gray-100    { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500  { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200,
+  html[data-theme="dark"] .border-gray-300 { border-color: var(--border) !important; }
+
+  /* 영어 번역 안내 카드 (#lang-hint-en) — info / warn 박스 라이트+다크 */
+  .info-box      { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .info-box-text { color: #1e40af; }
+  .info-action-btn { border-color: #1e40af; color: #1e40af; }
+  .warn-box      { background: #fefce8; border: 1px solid #fde68a; }
+  .warn-box-text { color: #713f12; }
+  html[data-theme="dark"] .info-box       { background: rgba(59,130,246,.12); border-color: rgba(59,130,246,.40); }
+  html[data-theme="dark"] .info-box-text  { color: #93c5fd; }
+  html[data-theme="dark"] .info-action-btn { border-color: rgba(59,130,246,.50); color: #93c5fd; }
+  html[data-theme="dark"] .info-action-btn:hover { background: rgba(59,130,246,.10) !important; }
+  html[data-theme="dark"] .warn-box       { background: rgba(217,119,6,.12); border-color: rgba(217,119,6,.40); }
+  html[data-theme="dark"] .warn-box-text  { color: #fcd34d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="py-2">
+
+  <!-- Header banner -->
+  <div class="relative overflow-hidden rounded-2xl border border-gray-100 bg-white mb-6"
+       style="box-shadow: 0 4px 20px rgba(0,0,0,.07); max-width: 1200px; margin-left:auto; margin-right:auto;">
+    <div class="absolute top-0 left-0 right-0 h-1 bg-[var(--primary-dark)] rounded-t-2xl"></div>
+    <div class="absolute top-0 right-0 w-64 h-64 bg-[var(--primary-dark)] opacity-[0.04] blur-[60px] rounded-full pointer-events-none"></div>
+    <div class="relative z-10 flex items-center justify-between gap-4 p-5">
+      <div class="flex items-center gap-4">
+        <div class="p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+          <i class="bi bi-pencil-square text-xl text-[var(--primary-dark)] leading-none"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-extrabold tracking-tight text-[var(--primary-dark)] leading-none">편집 중 — {{ meta.title }}</h1>
+          <p class="text-xs text-gray-400 mt-1">관리자 전용 에디터 · 변경 사항은 저장 버튼을 눌러야 반영됩니다</p>
+        </div>
+      </div>
+      <a href="{{ '/privacy' if doc_id == 'privacy_policy' else '/terms' }}" target="_blank"
+         class="btn-preview">
+        <i class="bi bi-eye"></i> 공개 페이지 보기
+      </a>
+    </div>
+  </div>
+
+  <!-- Top bar: effective date + major revision + save -->
+  <div class="top-bar">
+    <div class="meta-field">
+      <label class="font-semibold">시행일</label>
+      <input type="hidden" id="effective-date" value="{{ doc.effective_date or '' }}" />
+    </div>
+    <label class="inline-flex items-center gap-2 cursor-pointer select-none" title="체크 시 모든 기존 사용자에게 재동의 팝업이 뜹니다. 사소한 오타 수정에는 체크하지 마세요.">
+      <input type="checkbox" id="major-revision" class="w-4 h-4" style="accent-color:var(--primary-dark)">
+      <span style="font-size:13px;font-weight:600;color:var(--primary-dark)">
+        <i class="bi bi-exclamation-triangle-fill mr-1"></i>중대 개정
+        <span style="font-size:10px;color:var(--text-muted);font-weight:500">(기존 동의자 재동의 강제)</span>
+      </span>
+    </label>
+    <button class="btn-save" id="btn-save" onclick="saveAll()">
+      <i class="bi bi-floppy-fill"></i> 저장
+    </button>
+  </div>
+
+  <!-- Main editor layout -->
+  <div class="editor-wrap">
+
+    <!-- Article list sidebar -->
+    <div class="article-list-panel">
+      <div class="panel-header">
+        <span><i class="bi bi-list"></i> 조항 목록</span>
+        <span id="article-count" class="font-normal text-gray-400 normal-case text-[.7rem]"></span>
+      </div>
+      <div class="article-list" id="article-list"></div>
+      <div class="panel-footer">
+        <button class="btn-add-article" onclick="addArticle()">
+          <i class="bi bi-plus-circle"></i> 조항 추가
+        </button>
+      </div>
+    </div>
+
+    <!-- Quill editor panel -->
+    <div class="editor-panel">
+
+      <!-- Panel top bar: article badge + language tabs + delete -->
+      <div class="editor-panel-header" style="align-items:center;gap:12px;">
+        <span class="article-num-badge" id="current-article-badge">제 — 조</span>
+        <div id="lang-tabs" style="display:inline-flex;border:1.5px solid var(--outline-variant);border-radius:6px;overflow:hidden;margin-left:auto;">
+          <button type="button" id="lang-tab-ko" onclick="switchLang('ko')"
+                  style="padding:6px 14px;font-size:12px;font-weight:700;background:var(--primary-dark);color:#fff;border:none;cursor:pointer;">
+            한국어
+          </button>
+          <button type="button" id="lang-tab-en" onclick="switchLang('en')"
+                  style="padding:6px 14px;font-size:12px;font-weight:700;background:var(--surface);color:var(--text-muted);border:none;border-left:1.5px solid var(--outline-variant);cursor:pointer;">
+            English <span id="lang-en-missing-count" style="font-weight:500;color:var(--text-dim);"></span>
+          </button>
+        </div>
+        <button class="btn-delete-article" onclick="deleteArticle()">
+          <i class="bi bi-trash3"></i> 삭제
+        </button>
+      </div>
+
+      <div id="lang-hint-en" class="info-box info-box-text" style="display:none;padding:8px 14px;margin-bottom:6px;border-radius:6px;font-size:12px;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;">
+        <div>
+          <i class="bi bi-translate mr-1"></i>Editing the <strong>English translation</strong>. Fields left blank will fall back to Korean.
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="btn-translate-this" onclick="translateCurrentArticle()" class="info-action-btn"
+                  style="padding:5px 10px;font-size:11px;font-weight:700;border-width:2px;border-style:solid;background:var(--surface);border-radius:6px;cursor:pointer;">
+            <i class="bi bi-stars"></i> AI translate this article
+          </button>
+          <button type="button" id="btn-translate-missing" onclick="translateMissingArticles()"
+                  style="padding:5px 10px;font-size:11px;font-weight:700;border:2px solid var(--primary-dark);background:var(--surface);color:var(--primary-dark);border-radius:6px;cursor:pointer;">
+            <i class="bi bi-stars"></i> Translate all missing
+          </button>
+        </div>
+      </div>
+      <div id="lang-ai-notice" class="warn-box warn-box-text" style="display:none;padding:6px 12px;margin-bottom:10px;border-radius:6px;font-size:11px;">
+        <i class="bi bi-shield-exclamation mr-1"></i>
+        <strong>Data governance:</strong> When you click AI translate, Korean content is sent to OpenAI (gpt-4o).
+        Do not include personal information (employee IDs, emails, phone numbers) in legal document text.
+        Translations are cached 24h and logged for audit.
+      </div>
+
+      <!-- Chapter section -->
+      <div class="editor-section">
+        <div class="editor-section-label">
+          <i class="bi bi-bookmark-fill"></i> 소속 장 (선택)
+        </div>
+        <div class="chapter-row">
+          <input type="number" id="chapter-num-input" class="chapter-num-input"
+                 min="0" max="50" placeholder="장 번호" oninput="onChapterInput()" />
+          <input type="text" id="chapter-title-input" class="chapter-title-input"
+                 placeholder="장 제목 (예: 총칙)" oninput="onChapterInput()" />
+        </div>
+        <div class="chapter-hint">
+          장 번호를 <strong>0 또는 비워두면</strong> 해당 조항은 장 없이 표시됩니다. 같은 장에 속한 조항들은 번호/제목을 동일하게 입력하세요.
+        </div>
+      </div>
+
+      <!-- Title section -->
+      <div class="editor-section">
+        <div class="editor-section-label">
+          <i class="bi bi-type-h1"></i> 조항 제목
+        </div>
+        <input type="text" id="article-title-input" class="article-title-input"
+               placeholder="예: 제1조 (목적)" oninput="onTitleInput()" />
+      </div>
+
+      <!-- Body section -->
+      <div class="editor-section" style="padding-bottom: 20px;">
+        <div class="editor-section-label">
+          <i class="bi bi-text-paragraph"></i> 본문
+        </div>
+        <div id="quill-editor"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- ── AI 번역 미리보기 모달 ── -->
+<!-- z-index 11000/11500 — T&C 재동의 모달(10000) 보다 위. 번역 작업 중
+     비동기 약관 개정 발생 시에도 현재 맥락 유지 위해 상위 표시. -->
+<div id="tlPreviewModal" class="modal-backdrop" style="display:none;z-index:11000;overscroll-behavior:contain;" onclick="if(event.target===this)closeTranslatePreview()">
+  <div class="modal-box" style="background:var(--surface);max-width:860px;width:100%;max-height:90vh;display:flex;flex-direction:column;border:3px solid var(--text-strong);border-radius:12px;">
+    <div style="padding:18px 24px;border-bottom:2.5px solid var(--text-strong);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div>
+        <div style="font-size:15px;font-weight:800;color:var(--text-strong);">
+          <i class="bi bi-stars mr-1" style="color:var(--primary-dark);"></i>AI Translation Preview
+          <span style="font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;margin-left:8px;letter-spacing:.05em;">DRAFT</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Review the auto-generated English translation before applying. <strong>You must verify accuracy.</strong></div>
+      </div>
+      <button onclick="closeTranslatePreview()" style="width:32px;height:32px;border:none;background:var(--surface-low);border-radius:6px;cursor:pointer;"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div id="tlPreviewBody" style="flex:1;overflow-y:auto;padding:18px 24px;background:var(--surface-low);">
+      <!-- populated by JS -->
+    </div>
+    <div style="padding:14px 24px;border-top:2.5px solid var(--text-strong);background:var(--surface);display:flex;justify-content:space-between;gap:8px;flex-shrink:0;">
+      <div id="tlPreviewStats" style="font-size:11px;color:var(--text-muted);align-self:center;"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeTranslatePreview()" style="padding:8px 16px;border:2px solid var(--outline-variant);background:var(--surface);color:var(--on-surface-variant);font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;">
+          Cancel
+        </button>
+        <button id="tlApplyBtn" onclick="applyTranslationPreview()" style="padding:8px 18px;border:2px solid var(--primary-dark);background:var(--primary-dark);color:#fff;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;">
+          <i class="bi bi-check"></i> Apply to editor
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 번역 진행 중 오버레이 ── -->
+<div id="tlBusyOverlay" class="modal-backdrop" style="display:none;z-index:11500;overscroll-behavior:contain;">
+  <div style="background:var(--surface);padding:24px 32px;border-radius:10px;border:3px solid var(--text-strong);display:flex;align-items:center;gap:14px;box-shadow:0 15px 40px rgba(0,0,0,.2);">
+    <div style="width:20px;height:20px;border:3px solid var(--outline-variant);border-top-color:var(--primary-dark);border-radius:50%;animation:spin .8s linear infinite;"></div>
+    <div>
+      <div id="tlBusyTitle" style="font-size:14px;font-weight:800;color:var(--text-strong);">Translating...</div>
+      <div id="tlBusyDetail" style="font-size:11px;color:var(--text-muted);margin-top:2px;">GPT-4o is generating English draft</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // ── State ────────────────────────────────────────────────────
+  let articles    = {{ (doc.articles or []) | tojson }};
+  let docVersion  = {{ (doc.version or 0) | tojson }};
+  let currentIdx  = 0;
+  let currentLang = 'ko';  // 'ko' | 'en' — editor 에서 현재 편집 중인 언어
+  let quill       = null;
+  let dirty       = false;  // unsaved changes flag
+
+  // ── Quill init ────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+
+    // Datepicker
+    if (typeof DYBDatepicker !== 'undefined') {
+      DYBDatepicker.replace('effective-date', { placeholder: '시행일 선택' });
+    }
+
+    // Article list is always rendered — independent of Quill
+    if (!Array.isArray(articles) || articles.length === 0) {
+      articles = [{ number: 1, title: '제1조', content: '', chapter_number: 0, chapter_title: '' }];
+    }
+    // Ensure chapter fields exist on legacy data (한/영 모두)
+    articles.forEach(a => {
+      if (a.chapter_number == null)     a.chapter_number = 0;
+      if (a.chapter_title  == null)     a.chapter_title  = '';
+      if (a.title_en       == null)     a.title_en       = '';
+      if (a.content_en     == null)     a.content_en     = '';
+      if (a.chapter_title_en == null)   a.chapter_title_en = '';
+      if (a.ai_translated_at == null)   a.ai_translated_at = '';
+    });
+    renderArticleList();
+    _applyLangUI();  // 초기 언어 탭 UI 동기화 (+ missing 카운트 갱신)
+
+    // Quill 초기화 (CDN 로드 실패 시 에디터만 비활성화, 목록은 정상 동작)
+    if (typeof Quill === 'undefined') {
+      document.getElementById('quill-editor').innerHTML =
+        '<p style="padding:20px;color:var(--primary-dark);font-size:.85rem;"><i class="bi bi-exclamation-triangle-fill text-amber-500"></i> 에디터 라이브러리를 불러오지 못했습니다. 네트워크 연결을 확인하고 새로고침 해주세요.</p>';
+      return;
+    }
+
+    // Register custom font sizes (px inline style)
+    try {
+      const SizeStyle = Quill.import('attributors/style/size');
+      const sizes = ['10px','11px','12px','13px','14px','16px','18px','20px','24px','28px','32px','36px'];
+      SizeStyle.whitelist = sizes;
+      Quill.register(SizeStyle, true);
+    } catch(e) {
+      console.warn('[DYB] Quill size registration failed:', e);
+    }
+
+    try {
+      quill = new Quill('#quill-editor', {
+        theme: 'snow',
+        modules: {
+          toolbar: [
+            [{ size: ['10px','11px','12px','13px','14px', false,'18px','20px','24px','28px','32px','36px'] },
+             { header: [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ color: [] }, { background: [] }],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            [{ indent: '-1' }, { indent: '+1' }],
+            [{ align: [] }],
+            ['link', 'blockquote', 'clean'],
+          ]
+        },
+        placeholder: '이곳에 조항 내용을 입력하세요…',
+      });
+    } catch(e) {
+      console.error('[DYB] Quill init failed:', e);
+      document.getElementById('quill-editor').innerHTML =
+        '<p style="padding:20px;color:var(--primary-dark);font-size:.85rem;"><i class="bi bi-exclamation-triangle-fill text-amber-500"></i> 에디터 초기화 실패: ' + e.message + '</p>';
+      return;
+    }
+
+    quill.on('text-change', (delta, oldDelta, source) => {
+      if (source === 'user') dirty = true;
+    });
+
+    // 첫 번째 조항 에디터에 로드
+    loadCurrentToEditor();
+  });
+
+  // ── Article list ──────────────────────────────────────────────
+  function renderArticleList() {
+    const list = document.getElementById('article-list');
+    list.innerHTML = '';
+    let prevChapter = 0;
+    articles.forEach((a, i) => {
+      const chNum = Number(a.chapter_number) || 0;
+      if (chNum > 0 && chNum !== prevChapter) {
+        const sep = document.createElement('div');
+        sep.className = 'article-chapter-sep';
+        sep.innerHTML = `
+          <span class="ch-num">제${chNum}장</span>
+          <span class="ch-ttl">${escHtml(a.chapter_title || '')}</span>`;
+        list.appendChild(sep);
+        prevChapter = chNum;
+      }
+      if (chNum === 0) prevChapter = 0;
+
+      const item = document.createElement('div');
+      item.className = 'article-item' + (i === currentIdx ? ' active' : '');
+      // 사이드바 라벨: 한국어 제목 없으면 영어 제목으로 폴백 → 번역만 입력된
+      // 조항도 리스트에서 식별 가능. 둘 다 없으면 '제목 없음'.
+      const labelText = (a.title || '').trim() || (a.title_en || '').trim() || '제목 없음';
+      // W3: AI 번역 이력이 있으면 ⚡ 아이콘으로 표시. 저장 전까지 메모리에만 존재.
+      const aiBadge = (a.ai_translated_at || '').trim()
+        ? '<span title="AI-translated — review before publish" style="color:#b45309;margin-right:4px;font-size:10px;">⚡</span>'
+        : '';
+      item.innerHTML = `
+        <span class="art-num">${a.number}조</span>
+        <span class="art-label">${aiBadge}${escHtml(labelText)}</span>
+        <span class="art-actions">
+          <button class="art-btn" onclick="moveUp(${i})" title="위로"><i class="bi bi-chevron-up"></i></button>
+          <button class="art-btn" onclick="moveDown(${i})" title="아래로"><i class="bi bi-chevron-down"></i></button>
+        </span>`;
+      item.addEventListener('click', e => {
+        if (e.target.closest('.art-btn')) return;
+        switchTo(i);
+      });
+      list.appendChild(item);
+    });
+    document.getElementById('article-count').textContent = `총 ${articles.length}조`;
+  }
+
+  // ── Article switching ─────────────────────────────────────────
+  function _fieldKeys(lang) {
+    // 언어별 저장 필드 매핑 — 한국어는 기존 필드(하위 호환), 영어는 _en 접미사.
+    return lang === 'en'
+      ? { title: 'title_en', content: 'content_en', chapterTitle: 'chapter_title_en' }
+      : { title: 'title',    content: 'content',    chapterTitle: 'chapter_title'    };
+  }
+
+  function saveCurrentToState() {
+    if (articles.length === 0) return;
+    const a = articles[currentIdx];
+    if (!a) return;
+    const k = _fieldKeys(currentLang);
+    if (quill) a[k.content] = quill.root.innerHTML;
+    a[k.title]       = document.getElementById('article-title-input').value;
+    const chNumRaw   = document.getElementById('chapter-num-input').value;
+    const chNum      = parseInt(chNumRaw, 10);
+    a.chapter_number = Number.isFinite(chNum) && chNum > 0 ? chNum : 0;
+    a[k.chapterTitle] = document.getElementById('chapter-title-input').value || '';
+  }
+
+  // 언어 탭 전환 — 현재 언어 필드 저장 → 탭 변경 → 다른 언어 필드 로드.
+  function switchLang(lang) {
+    if (lang === currentLang) return;
+    saveCurrentToState();
+    currentLang = lang;
+    _applyLangUI();
+    loadCurrentToEditor();
+    renderArticleList();
+  }
+
+  function _applyLangUI() {
+    const ko = document.getElementById('lang-tab-ko');
+    const en = document.getElementById('lang-tab-en');
+    const hintEn = document.getElementById('lang-hint-en');
+    const aiNotice = document.getElementById('lang-ai-notice');
+    const titleInput = document.getElementById('article-title-input');
+    const chapterTitleInput = document.getElementById('chapter-title-input');
+
+    if (currentLang === 'ko') {
+      ko.style.background = 'var(--primary-dark)'; ko.style.color = 'var(--surface)';
+      en.style.background = 'var(--surface)';    en.style.color = 'var(--text-muted)';
+      hintEn.style.display = 'none';
+      if (aiNotice) aiNotice.style.display = 'none';
+      if (titleInput) titleInput.placeholder = '예: 제1조 (목적)';
+      if (chapterTitleInput) chapterTitleInput.placeholder = '장 제목 (예: 총칙)';
+      if (quill) quill.root.setAttribute('data-placeholder', '이곳에 조항 내용을 입력하세요…');
+    } else {
+      ko.style.background = 'var(--surface)';    ko.style.color = 'var(--text-muted)';
+      en.style.background = 'var(--primary-dark)'; en.style.color = 'var(--surface)';
+      hintEn.style.display = 'flex';
+      if (aiNotice) aiNotice.style.display = 'block';
+      if (titleInput) titleInput.placeholder = 'e.g., Article 1 (Purpose)';
+      if (chapterTitleInput) chapterTitleInput.placeholder = 'Chapter title (e.g., General)';
+      if (quill) quill.root.setAttribute('data-placeholder', 'Enter English translation here…');
+    }
+    _updateEnMissingBadge();
+  }
+
+  function _updateEnMissingBadge() {
+    const badge = document.getElementById('lang-en-missing-count');
+    if (!badge) return;
+    // "완전 번역" 기준: title_en 과 content_en 모두 존재. 부분 번역도 missing 에
+    // 포함 — 공개 페이지 fallback badge 판정과 일관.
+    const missing = articles.filter(a => {
+      const hasTitle = (a.title_en || '').trim();
+      const hasContent = (a.content_en || '').trim();
+      return !(hasTitle && hasContent);
+    }).length;
+    badge.textContent = missing > 0 ? ` · ${missing} missing` : '';
+    badge.style.color = missing > 0 ? '#b45309' : 'var(--text-dim)';
+  }
+
+  function switchTo(idx) {
+    saveCurrentToState();
+    currentIdx = idx;
+    loadCurrentToEditor();
+    renderArticleList();
+  }
+
+  function selectArticle(idx) {
+    currentIdx = idx;
+    renderArticleList();    // 항상 먼저 — 에디터 실패해도 목록 갱신
+    loadCurrentToEditor();
+  }
+
+  function loadCurrentToEditor() {
+    const a = articles[currentIdx];
+    if (!a) return;
+    const k = _fieldKeys(currentLang);
+    document.getElementById('article-title-input').value = a[k.title] || '';
+    document.getElementById('chapter-num-input').value   = a.chapter_number ? String(a.chapter_number) : '';
+    document.getElementById('chapter-title-input').value = a[k.chapterTitle] || '';
+    document.getElementById('current-article-badge').textContent = currentLang === 'en' ? `Article ${a.number}` : `제${a.number}조`;
+    if (!quill) return;  // Quill 초기화 실패 시 목록은 정상 동작, 에디터만 스킵
+    // Use Quill API to set content (keeps model in sync)
+    const delta = quill.clipboard.convert(a[k.content] || '');
+    quill.setContents(delta, 'silent');
+    const len = quill.getLength();
+    quill.setSelection(Math.max(0, len - 1), 0, 'silent');
+  }
+
+  function onTitleInput() {
+    const k = _fieldKeys(currentLang);
+    articles[currentIdx][k.title] = document.getElementById('article-title-input').value;
+    // 사이드바 라벨 갱신 — renderArticleList 와 동일한 폴백 규칙(한→영→'제목 없음').
+    const labels = document.querySelectorAll('#article-list .art-label');
+    if (labels[currentIdx]) {
+      const a = articles[currentIdx];
+      labels[currentIdx].textContent = (a.title || '').trim() || (a.title_en || '').trim() || '제목 없음';
+    }
+    _updateEnMissingBadge();
+    dirty = true;
+  }
+
+  function onChapterInput() {
+    const a = articles[currentIdx];
+    if (!a) return;
+    const k = _fieldKeys(currentLang);
+    const raw = document.getElementById('chapter-num-input').value;
+    const n   = parseInt(raw, 10);
+    a.chapter_number = Number.isFinite(n) && n > 0 ? n : 0;
+    a[k.chapterTitle] = document.getElementById('chapter-title-input').value || '';
+    renderArticleList();
+    dirty = true;
+  }
+
+  // ── Add / Delete ──────────────────────────────────────────────
+  function addArticle() {
+    saveCurrentToState();
+    const num = articles.length + 1;
+    // 새 조항은 직전 조항의 장 정보를 이어받음 (편의)
+    const prev = articles[articles.length - 1] || {};
+    articles.push({
+      number: num,
+      title: `제${num}조`,
+      content: '',
+      title_en: '',
+      content_en: '',
+      chapter_number: Number(prev.chapter_number) || 0,
+      chapter_title:  prev.chapter_title || '',
+      chapter_title_en: prev.chapter_title_en || '',
+    });
+    selectArticle(articles.length - 1);
+    dirty = true;
+  }
+
+  function deleteArticle() {
+    if (articles.length <= 1) {
+      showToast('최소 1개의 조항이 있어야 합니다.', 'error'); return;
+    }
+    if (!confirm(`제${articles[currentIdx].number}조를 삭제할까요?`)) return;
+    articles.splice(currentIdx, 1);
+    // ⚠️ renumber() 가 articles[currentIdx] 를 읽으므로, 먼저 clamp 해야 함
+    if (currentIdx >= articles.length) currentIdx = articles.length - 1;
+    renumber();
+    renderArticleList();
+    loadCurrentToEditor();
+    dirty = true;
+  }
+
+  // ── Reorder ───────────────────────────────────────────────────
+  function moveUp(i) {
+    if (i === 0) return;
+    saveCurrentToState();
+    [articles[i - 1], articles[i]] = [articles[i], articles[i - 1]];
+    renumber();
+    if (currentIdx === i) currentIdx = i - 1;
+    else if (currentIdx === i - 1) currentIdx = i;
+    loadCurrentToEditor();
+    renderArticleList();
+    dirty = true;
+  }
+
+  function moveDown(i) {
+    if (i === articles.length - 1) return;
+    saveCurrentToState();
+    [articles[i + 1], articles[i]] = [articles[i], articles[i + 1]];
+    renumber();
+    if (currentIdx === i) currentIdx = i + 1;
+    else if (currentIdx === i + 1) currentIdx = i;
+    loadCurrentToEditor();
+    renderArticleList();
+    dirty = true;
+  }
+
+  function renumber() {
+    articles.forEach((a, i) => {
+      a.number = i + 1;
+      if (!a.title || /^제\d+조$/.test(a.title)) a.title = `제${i + 1}조`;
+    });
+    document.getElementById('current-article-badge').textContent = `제${articles[currentIdx].number}조`;
+  }
+
+  // ── AI 번역 (KO → EN 초안) ─────────────────────────────────────
+  let _tlPending = null;  // 미리보기에서 Apply 시 쓸 데이터: {mode: 'single'|'batch', ...}
+
+  let _modalOpenCount = 0;
+  let _savedBodyOverflow = '';
+  let _savedHtmlOverflow = '';
+  function _lockBodyScroll() {
+    if (_modalOpenCount === 0) {
+      _savedBodyOverflow = document.body.style.overflow;
+      _savedHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    }
+    _modalOpenCount++;
+  }
+  function _unlockBodyScroll() {
+    if (_modalOpenCount > 0) _modalOpenCount--;
+    if (_modalOpenCount === 0) {
+      document.body.style.overflow = _savedBodyOverflow;
+      document.documentElement.style.overflow = _savedHtmlOverflow;
+    }
+  }
+
+  function _showBusy(title, detail) {
+    document.getElementById('tlBusyTitle').textContent = title || 'Translating...';
+    document.getElementById('tlBusyDetail').textContent = detail || 'GPT-4o is generating English draft';
+    const el = document.getElementById('tlBusyOverlay');
+    if (el.style.display !== 'flex') {
+      el.style.display = 'flex';
+      _lockBodyScroll();
+    }
+  }
+  function _hideBusy() {
+    const el = document.getElementById('tlBusyOverlay');
+    if (el.style.display === 'flex') {
+      el.style.display = 'none';
+      _unlockBodyScroll();
+    }
+  }
+
+  async function translateCurrentArticle() {
+    saveCurrentToState();
+    const a = articles[currentIdx];
+    if (!a) return;
+    const titleKo   = (a.title || '').trim();
+    const contentKo = (a.content || '').trim();
+    if (!titleKo && !contentKo) {
+      showToast('이 조항에 번역할 한국어 내용이 없습니다.', 'error');
+      return;
+    }
+    const hasEn = (a.title_en || '').trim() || (a.content_en || '').trim();
+    if (hasEn && !confirm('This article already has English content. Translating will let you preview a new draft — you can then choose to replace or cancel.\n\n기존 영어 번역이 있습니다. 미리보기 후 교체 여부를 선택할 수 있습니다. 계속할까요?')) {
+      return;
+    }
+
+    _showBusy('Translating article ' + a.number, 'GPT-4o · estimated 5–10 seconds');
+    try {
+      const res = await fetch('/api/legal/translate-article/{{ doc_id }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title_ko:        titleKo,
+          content_ko_html: contentKo,
+          article_number:  a.number,
+        }),
+      });
+      const data = await res.json();
+      if (data.status !== 'SUCCESS') throw new Error(data.message || 'Translation failed');
+      _tlPending = {
+        mode: 'single',
+        article_idx: currentIdx,
+        title_en: data.title_en,
+        content_en_html: data.content_en_html,
+        input_tokens: data.input_tokens,
+        output_tokens: data.output_tokens,
+        model: data.model,
+      };
+      _renderSinglePreview(a, _tlPending);
+      _openPreviewModal();
+    } catch (e) {
+      showToast('번역 실패: ' + (e.message || e), 'error');
+    } finally {
+      _hideBusy();
+    }
+  }
+
+  async function translateMissingArticles() {
+    saveCurrentToState();
+    // 번역 대상 count
+    const targets = articles.filter(a => {
+      const hasTitle = (a.title_en || '').trim();
+      const hasContent = (a.content_en || '').trim();
+      const hasKo = (a.title || '').trim() || (a.content || '').trim();
+      return hasKo && !(hasTitle && hasContent);
+    });
+    if (targets.length === 0) {
+      showToast('모든 조항이 이미 번역되어 있거나 한국어 내용이 비어있습니다.', 'info');
+      return;
+    }
+    if (!confirm(`${targets.length}개 조항의 영어 번역을 일괄 생성합니다. 이미 완전 번역된 조항은 건너뜁니다.\n약 ${Math.ceil(targets.length * 7)}초 소요될 수 있습니다. 계속할까요?`)) {
+      return;
+    }
+
+    _showBusy(`Translating ${targets.length} articles`, 'GPT-4o · this may take 30-90 seconds');
+    try {
+      const res = await fetch('/api/legal/translate-missing/{{ doc_id }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          articles: articles.map(a => ({
+            number: a.number,
+            title: a.title || '',
+            content: a.content || '',
+            title_en: a.title_en || '',
+            content_en: a.content_en || '',
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (data.status !== 'SUCCESS') throw new Error(data.message || 'Batch translation failed');
+      _tlPending = {
+        mode: 'batch',
+        translations: data.translations || [],
+        skipped: data.skipped || [],
+        errors: data.errors || [],
+        total_input_tokens: data.total_input_tokens,
+        total_output_tokens: data.total_output_tokens,
+      };
+      _renderBatchPreview(_tlPending);
+      _openPreviewModal();
+    } catch (e) {
+      showToast('일괄 번역 실패: ' + (e.message || e), 'error');
+    } finally {
+      _hideBusy();
+    }
+  }
+
+  function _renderSinglePreview(article, pending) {
+    const body = document.getElementById('tlPreviewBody');
+    const hasExistingEn = (article.title_en || '').trim() || (article.content_en || '').trim();
+    body.innerHTML = `
+      <div style="background:#fef3c7;border:2px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#92400e;">
+        <i class="bi bi-exclamation-triangle-fill mr-1"></i>
+        This is a <strong>machine-generated draft</strong>. Review for legal accuracy before saving. Your edits will not auto-save — click Apply to transfer to the editor.
+      </div>
+      <div style="margin-bottom:8px;font-size:11px;color:var(--text-muted);font-weight:700;">Article ${article.number}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div style="background:var(--surface);border:2px solid var(--outline-variant);border-radius:8px;padding:12px;">
+          <div style="font-size:10px;font-weight:800;color:var(--text-muted);letter-spacing:.05em;margin-bottom:6px;">KOREAN (source)</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-strong);margin-bottom:6px;">${_esc(article.title || '')}</div>
+          <div style="font-size:12px;color:var(--text);line-height:1.6;max-height:300px;overflow-y:auto;">${article.content || '<em style="color:var(--text-dim);">(empty)</em>'}</div>
+        </div>
+        <div style="background:var(--surface);border:2px solid var(--primary-dark);border-radius:8px;padding:12px;">
+          <div style="font-size:10px;font-weight:800;color:var(--primary-dark);letter-spacing:.05em;margin-bottom:6px;">ENGLISH (AI draft)</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-strong);margin-bottom:6px;">${_esc(pending.title_en)}</div>
+          <div style="font-size:12px;color:var(--text);line-height:1.6;max-height:300px;overflow-y:auto;">${pending.content_en_html || '<em style="color:var(--text-dim);">(empty)</em>'}</div>
+        </div>
+      </div>
+      ${hasExistingEn ? '<div style="font-size:11px;color:#b91c1c;"><i class="bi bi-exclamation-triangle-fill mr-1"></i>Applying will <strong>replace</strong> your existing English content for this article.</div>' : ''}
+    `;
+    document.getElementById('tlPreviewStats').textContent =
+      `Tokens: ${pending.input_tokens} in / ${pending.output_tokens} out · model ${pending.model}`;
+  }
+
+  function _renderBatchPreview(pending) {
+    const body = document.getElementById('tlPreviewBody');
+    const count = pending.translations.length;
+    if (count === 0) {
+      body.innerHTML = `
+        <div style="padding:24px;text-align:center;color:var(--text-muted);">
+          <i class="bi bi-info-circle" style="font-size:24px;display:block;margin-bottom:8px;"></i>
+          No articles were translated. ${pending.skipped.length > 0 ? 'All articles were skipped (already translated or empty).' : ''}
+          ${pending.errors.length > 0 ? '<br><span style="color:#b91c1c;">' + pending.errors.length + ' article(s) failed.</span>' : ''}
+        </div>
+      `;
+      document.getElementById('tlApplyBtn').disabled = true;
+      document.getElementById('tlApplyBtn').style.opacity = '0.4';
+      document.getElementById('tlPreviewStats').textContent = '';
+      return;
+    }
+    document.getElementById('tlApplyBtn').disabled = false;
+    document.getElementById('tlApplyBtn').style.opacity = '1';
+
+    const kbyNumber = {};
+    articles.forEach(a => { kbyNumber[a.number] = a; });
+
+    let html = `
+      <div style="background:#fef3c7;border:2px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#92400e;">
+        <i class="bi bi-exclamation-triangle-fill mr-1"></i>
+        <strong>Machine-generated drafts</strong> for ${count} article${count > 1 ? 's' : ''}. Review each one before applying. Click Apply to transfer all to the editor.
+      </div>
+      ${pending.errors.length > 0 ? `<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:#b91c1c;"><i class="bi bi-x-circle-fill mr-1"></i>${pending.errors.length} article(s) failed to translate and will not be applied.</div>` : ''}
+      <div style="display:flex;flex-direction:column;gap:10px;">
+    `;
+    pending.translations.forEach(t => {
+      const source = kbyNumber[t.number] || {};
+      html += `
+        <details style="background:var(--surface);border:2px solid var(--outline-variant);border-radius:8px;padding:10px 14px;">
+          <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-strong);display:flex;align-items:center;gap:8px;">
+            <span style="padding:2px 8px;border-radius:999px;font-size:10px;background:#fff1f2;color:var(--primary-dark);">Article ${t.number}</span>
+            <span style="font-weight:600;color:var(--on-surface-variant);">${_esc(t.title_en)}</span>
+          </summary>
+          <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div style="font-size:9px;font-weight:800;color:var(--text-muted);letter-spacing:.05em;margin-bottom:4px;">KO</div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:4px;">${_esc(source.title || '')}</div>
+              <div style="font-size:11px;color:var(--text);line-height:1.5;max-height:180px;overflow-y:auto;">${source.content || ''}</div>
+            </div>
+            <div>
+              <div style="font-size:9px;font-weight:800;color:var(--primary-dark);letter-spacing:.05em;margin-bottom:4px;">EN (AI)</div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:4px;">${_esc(t.title_en)}</div>
+              <div style="font-size:11px;color:var(--text);line-height:1.5;max-height:180px;overflow-y:auto;">${t.content_en_html || ''}</div>
+            </div>
+          </div>
+        </details>
+      `;
+    });
+    html += '</div>';
+    body.innerHTML = html;
+    document.getElementById('tlPreviewStats').textContent =
+      `Total tokens: ${pending.total_input_tokens} in / ${pending.total_output_tokens} out · ${count} translated, ${pending.skipped.length} skipped, ${pending.errors.length} errors`;
+  }
+
+  function applyTranslationPreview() {
+    if (!_tlPending) return;
+    const nowIso = new Date().toISOString();
+    if (_tlPending.mode === 'single') {
+      const idx = _tlPending.article_idx;
+      if (articles[idx]) {
+        articles[idx].title_en = _tlPending.title_en;
+        articles[idx].content_en = _tlPending.content_en_html;
+        articles[idx].ai_translated_at = nowIso;  // W3: 감사 메타
+      }
+      // 현재 편집 중이면 에디터도 갱신
+      if (currentIdx === idx && currentLang === 'en') {
+        document.getElementById('article-title-input').value = _tlPending.title_en;
+        if (quill) {
+          const delta = quill.clipboard.convert(_tlPending.content_en_html || '');
+          quill.setContents(delta, 'silent');
+        }
+      }
+      showToast(`Article ${articles[idx].number} translation applied. Review and save.`, 'success');
+    } else if (_tlPending.mode === 'batch') {
+      const byNum = {};
+      _tlPending.translations.forEach(t => { byNum[t.number] = t; });
+      let applied = 0;
+      articles.forEach(a => {
+        const t = byNum[a.number];
+        if (t) {
+          a.title_en = t.title_en;
+          a.content_en = t.content_en_html;
+          a.ai_translated_at = nowIso;  // W3: 감사 메타
+          applied++;
+        }
+      });
+      // 현재 article 이 batch 대상이고 영어 탭 중이면 에디터도 갱신
+      if (currentLang === 'en' && byNum[articles[currentIdx].number]) {
+        loadCurrentToEditor();
+      }
+      showToast(`${applied}건 번역이 적용되었습니다. 검토 후 저장하세요.`, 'success');
+    }
+    dirty = true;
+    _updateEnMissingBadge();
+    renderArticleList();  // 사이드바에 ⚡ 아이콘 반영
+    closeTranslatePreview();
+  }
+
+  function _openPreviewModal() {
+    const el = document.getElementById('tlPreviewModal');
+    if (el.style.display !== 'flex') {
+      el.style.display = 'flex';
+      _lockBodyScroll();
+    }
+  }
+
+  function closeTranslatePreview() {
+    const el = document.getElementById('tlPreviewModal');
+    if (el.style.display === 'flex') {
+      el.style.display = 'none';
+      _unlockBodyScroll();
+    }
+    _tlPending = null;
+    document.getElementById('tlApplyBtn').disabled = false;
+    document.getElementById('tlApplyBtn').style.opacity = '1';
+  }
+
+  function _esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Save ──────────────────────────────────────────────────────
+  async function saveAll() {
+    saveCurrentToState();
+    const btn = document.getElementById('btn-save');
+    btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 저장 중…';
+
+    const effectiveDate = document.getElementById('effective-date').value;
+    const majorEl = document.getElementById('major-revision');
+    const majorRevision = !!(majorEl && majorEl.checked);
+    try {
+      const res  = await fetch('/api/legal/save/{{ doc_id }}', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          articles,
+          effective_date: effectiveDate,
+          version: docVersion,
+          major_revision: majorRevision,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        docVersion = data.version ?? (docVersion + 1);
+        // 번역 진행률 표시 — "완전 번역" 기준: title_en 과 content_en 둘 다 존재.
+        // 공개 페이지의 fallback badge 판정 기준 (content_en 기반) 과 일관 유지.
+        const total = articles.length;
+        const fullyTranslated = articles.filter(a =>
+          (a.title_en || '').trim() && (a.content_en || '').trim()
+        ).length;
+        const partiallyTranslated = articles.filter(a => {
+          const hasTitle = (a.title_en || '').trim();
+          const hasContent = (a.content_en || '').trim();
+          return (hasTitle || hasContent) && !(hasTitle && hasContent);
+        }).length;
+        const missing = total - fullyTranslated - partiallyTranslated;
+        let msg = `저장되었습니다 (v${docVersion}, 총 ${total}조).`;
+        if (missing > 0 || partiallyTranslated > 0) {
+          const parts = [];
+          if (missing > 0) parts.push(`완전 누락 ${missing}건`);
+          if (partiallyTranslated > 0) parts.push(`부분 번역 ${partiallyTranslated}건`);
+          msg += ` English: ${parts.join(' · ')} — 영어 탭에서 채워주세요.`;
+        } else if (total > 0) {
+          msg += ' 한국어·English 모두 완료.';
+        }
+        // 알림 발송 수 — 서버는 실제 발송수를 반환하거나, 백그라운드 타임아웃
+        // (기본 2s) 시 -1 을 반환. 각 케이스마다 UX 메시지를 분기해 "-1명 전송"
+        // 같은 오해 방지.
+        if (typeof data.notified === 'number') {
+          if (data.notified > 0) {
+            const suffix = majorRevision ? '재동의 요청' : '개정 알림';
+            msg += ` <i class="bi bi-bell-fill text-blue-500"></i> ${data.notified}명에게 ${suffix} 전송.`;
+          } else if (data.notified === 0) {
+            msg += ' <i class="bi bi-bell-fill text-blue-500"></i> 알림 대상(기존 동의자) 없음.';
+          } else if (data.notified === -1) {
+            msg += ' <i class="bi bi-bell-fill text-blue-500"></i> 알림 발송이 백그라운드에서 진행 중입니다.';
+          }
+        }
+        showToast(msg, (missing > 0 || partiallyTranslated > 0) ? 'info' : 'success');
+        dirty = false;
+        _updateEnMissingBadge();
+        // 중대 개정은 1회 이벤트 — 체크박스 자동 해제.
+        if (majorEl) majorEl.checked = false;
+      } else if (data.status === 'CONFLICT') {
+        showToast(data.message || '다른 사용자가 문서를 수정했습니다.', 'error');
+      } else {
+        showToast('저장 실패: ' + (data.message || 'ERROR'), 'error');
+      }
+    } catch (e) {
+      showToast('저장 실패: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false; btn.innerHTML = '<i class="bi bi-floppy-fill"></i> 저장';
+    }
+  }
+
+  // Warn on unload if unsaved
+  window.addEventListener('beforeunload', e => {
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function showToast(msg, type) {
+    const el = document.getElementById('toast');
+    el.className = type;
+    el.innerHTML = `<i class="bi bi-${type === 'success' ? 'check-circle-fill' : 'exclamation-circle-fill'}"></i> ${msg}`;
+    el.style.display = 'flex';
+    setTimeout(() => { el.style.display = 'none'; }, 3000);
+  }
+</script>
+{% endblock %}

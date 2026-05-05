@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>DYB NHR — 연간 평가 결과지 {{ eval_deadline }}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap');
+
+  :root {
+    --red: #B01116;
+    --red-dark: #7a0b0f;
+    --red-light: #fdf3f3;
+    --red-mid: #e8a5a7;
+    --green: #15803d;
+    --green-light: #f0fdf4;
+    --green-mid: #6ee7a0;
+    --blue: #1d4ed8;
+    --blue-light: #eff6ff;
+    --blue-mid: #93b8ec;
+    --gold: #ca8a04;
+    --gold-light: #fef3c7;
+    --gold-mid: #fde047;
+    --gray-900: #111114;
+    --gray-700: #3d3d3d;
+    --gray-500: #4a4a4a;
+    --gray-400: #878789;
+    --gray-300: #9ca0a8;
+    --gray-200: #c9cacf;
+    --gray-100: #bdbec3;
+    --gray-50:  #f4f4f5;
+    --white:    #ffffff;
+  }
+
+  /* ── @page + 고정 푸터 ── */
+  @page {
+    size: A4;
+    margin: 0 0 25mm 0;   /* 하단 여백 확대 — 프린터 non-printable area 고려 */
+    @bottom-left {
+      content: "Internal Report";
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 9px; color: var(--gray-900);
+      letter-spacing: 0.08em;
+      margin: 4mm 36px 0;   /* 위로 올림 */
+      border-top: 1px solid var(--gray-200);
+      padding-top: 6px; width: calc(50% - 36px);
+      vertical-align: top;
+    }
+    @bottom-right {
+      content: string(doc-info) " · " counter(page) " / " counter(pages);
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 9px; color: var(--gray-900);
+      margin: 4mm 36px 0;
+      text-align: right;
+      border-top: 1px solid var(--gray-200);
+      padding-top: 6px; width: calc(50% - 36px);
+      vertical-align: top;
+    }
+  }
+
+  * {
+    margin: 0; padding: 0; box-sizing: border-box;
+    writing-mode: horizontal-tb;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  body {
+    font-family: 'Noto Sans KR', 'Noto Sans CJK KR', 'NanumGothic', sans-serif;
+    background: white; color: var(--gray-900); font-size: 11px;
+    width: 210mm;
+    string-set: doc-info attr(data-doc-info);
+  }
+  .page {
+    width: 210mm; background: var(--white);
+    position: relative;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  /* ═══════════════════════════════════════════════════════════ */
+  /*  HEADER                                                      */
+  /* ═══════════════════════════════════════════════════════════ */
+  .p-header {
+    padding: 22px 36px 18px;
+    border-bottom: 3px solid var(--red);
+    overflow: hidden;   /* 우측 score-block 잘림 방지용 컨테이너 */
+  }
+  .p-header-top {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px;
+  }
+  .logo-img { height: 48px; width: auto; display: block; }
+  .logo-text-fallback {
+    color: var(--red); font-size: 22px; letter-spacing: 0.06em; font-weight: 800;
+  }
+  .header-right-row {
+    display: flex; align-items: baseline; gap: 10px;
+    font-size: 11px;
+  }
+  .report-type-badge {
+    display: inline-block; font-size: 9px; color: var(--red); font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    background: var(--red-light); padding: 4px 10px; border-radius: 4px;
+    border: 1px solid var(--red-mid);
+    white-space: nowrap;
+  }
+  .issued-inline {
+    display: inline-flex; align-items: baseline; gap: 6px;
+  }
+  .issued-label {
+    font-size: 9px; color: var(--gray-400); letter-spacing: 0.14em;
+    text-transform: uppercase; font-weight: 700;
+  }
+  .issued-date {
+    font-size: 11px; color: var(--gray-900); font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .p-header-bottom {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;
+    flex-wrap: nowrap;
+  }
+  .p-header-bottom > div:first-child { flex: 1 1 0; min-width: 0; }
+  .profile-name {
+    font-size: 22px; color: var(--gray-900); font-weight: 700; line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .profile-meta {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px;
+  }
+  .meta-chip {
+    font-size: 10px; color: var(--gray-500);
+    display: flex; align-items: center; gap: 4px; white-space: nowrap;
+  }
+  .meta-chip span { color: var(--gray-900); font-weight: 700; }
+  .done-badge {
+    background: var(--green-light); color: var(--green); border: 1px solid var(--green-mid);
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 10px;
+  }
+
+  /* 랭크 + 종합 점수 — 용지 내부 고정 */
+  .score-block {
+    display: flex; align-items: center; gap: 12px;
+    flex: 0 0 auto; flex-shrink: 0;
+  }
+  /* 둥근 사각형 — 알파벳 하나용 정사각 비율, DYB brand */
+  .rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; padding: 0;
+    border-radius: 10px;
+    font-size: 26px; font-weight: 800; line-height: 1;
+    letter-spacing: 0;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,.10), inset 0 -1.5px 0 rgba(0,0,0,.08);
+  }
+  /* 5 등급 모두 DYB Red 단일 — 등급은 알파벳 자체로 표현, 색은 brand identity 통일.
+     무지개 배합 (red/gold/green/blue/gray) 의 자의성 제거. */
+  .rank-S,
+  .rank-A,
+  .rank-B,
+  .rank-C,
+  .rank-D       { color:#fff; background: linear-gradient(135deg,#B01116,#7a0b0f); }
+  /* policy note 의 커스텀 라벨용 (S/A/B/C/D 외 admin 지정 문자열) — DYB black */
+  .rank-custom { color:#fff; background: linear-gradient(135deg,#111114,#3d3d3d); }
+  .rank-na { color: var(--gray-500); background: var(--gray-50);
+             box-shadow: inset 0 0 0 1.5px var(--gray-200); font-size: 14px; }
+
+  .composite-badge {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+    flex-shrink: 0;
+  }
+  .composite-badge-label {
+    font-size: 9px; color: var(--gray-500); letter-spacing: 0.12em;
+    text-transform: uppercase; font-weight: 700;
+  }
+  .composite-badge-score {
+    font-size: 32px; color: var(--red); font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .composite-badge-score.na { font-size: 18px; color: var(--gray-300); }
+
+  /* ═══════════════════════════════════════════════════════════ */
+  /*  SECTION                                                     */
+  /* ═══════════════════════════════════════════════════════════ */
+  .section-wrap { padding: 14px 36px 0; }
+  .section-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--gray-700); font-weight: 700;
+    margin-bottom: 8px; padding-bottom: 4px;
+    border-bottom: 1.5px solid var(--gray-200);
+  }
+
+  /* ── 개인 정보 테이블 — 2×2+1 레이아웃 (가로 압축) ── */
+  .info-table-wrap {
+    border: 1.5px solid var(--gray-200); border-radius: 8px; overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .info-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+  .info-table th {
+    background: var(--gray-50); padding: 5px 10px; text-align: left;
+    font-weight: 700; color: var(--gray-700); font-size: 9.5px;
+    letter-spacing: 0.05em; white-space: nowrap;
+    border-right: 1px solid var(--gray-200);
+    vertical-align: middle;
+  }
+  .info-table td {
+    padding: 5px 12px; color: var(--gray-900); font-weight: 600;
+    vertical-align: middle;
+    border-right: 1px solid var(--gray-200);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .info-table td:last-child { border-right: none; }
+  .info-table tr { border-bottom: 1px solid var(--gray-100); }
+  .info-table tr:last-child { border-bottom: none; }
+  .info-table td.allowance-td { white-space: normal; vertical-align: middle; }
+  .allowance-list {
+    display: inline; font-size: 10.5px; line-height: 1.5;
+  }
+  .allowance-list > span {
+    display: inline-block; margin-right: 10px;
+  }
+  .allowance-list > span::before { content: '• '; color: var(--gray-300); }
+
+  /* ── 급여 테이블 ── */
+  .salary-table-wrap {
+    border: 1.5px solid var(--gray-200); border-radius: 8px; overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .salary-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+  .salary-table th {
+    background: var(--gray-50); padding: 5px 12px; text-align: center;
+    font-weight: 700; color: var(--gray-700); border-bottom: 1.5px solid var(--gray-200);
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap;
+  }
+  .salary-table th:first-child { text-align: left; }
+  .salary-table td {
+    padding: 4px 12px; border-bottom: 1px solid var(--gray-100);
+    color: var(--gray-900); white-space: nowrap; line-height: 1.4;
+  }
+  .salary-table td:first-child { text-align: left; font-weight: 600; }
+  .salary-table td.num { text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .salary-table td.op  { text-align: center; color: var(--gray-300); font-weight: 700; padding: 0; }
+  .salary-table tr:last-child td { border-bottom: none; }
+  .salary-table .total-row td {
+    background: var(--red-light); font-weight: 700; padding: 6px 12px;
+    border-top: 2px solid var(--red-mid);
+  }
+  .inc-cell { color: var(--green); }
+  .inc-cell-zero { color: var(--gray-300); }
+  .applied-cell { color: var(--blue); font-weight: 800 !important; }
+
+  .allowance-memo {
+    display: flex; align-items: baseline; gap: 8px;
+    font-size: 10px; color: var(--gray-700);
+    padding: 4px 10px; border-left: 3px solid var(--blue-mid);
+    background: var(--blue-light); border-radius: 2px;
+    line-height: 1.5; margin-bottom: 12px;
+  }
+  .allowance-memo-label {
+    font-size: 9px; font-weight: 700; color: var(--blue);
+    text-transform: uppercase; letter-spacing: 0.1em; flex-shrink: 0;
+  }
+
+  /* ── EVAL CARDS ── */
+  .eval-card {
+    border: 1.5px solid var(--gray-200); border-radius: 8px;
+    overflow: hidden; break-inside: avoid;
+  }
+  .eval-card-header {
+    padding: 7px 12px; background: var(--gray-50);
+    border-bottom: 1.5px solid var(--gray-200);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eval-card-title {
+    font-size: 11px; font-weight: 700; color: var(--gray-700);
+    text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap;
+  }
+  .eval-card-score {
+    font-size: 17px; font-weight: 800; color: var(--red); line-height: 1;
+  }
+  .eval-card-score.na { font-size: 13px; color: var(--gray-300); }
+  /* WeasyPrint flex gap 호환 이슈 회피 — margin 직접 제어 */
+  .eval-card-body { padding: 6px 12px 8px; }
+  .eval-card-body > * { margin: 0; padding: 0; }
+  .eval-card-body > * + * { margin-top: 2px; }
+
+  /* 수업 참관/NET — 날짜·평가자 한 줄 가로 배치, 최소 높이 */
+  .eval-meta-row {
+    display: flex; flex-wrap: wrap; gap: 14px; font-size: 10px;
+    color: var(--gray-700);
+    margin: 0; padding: 0; line-height: 1.3;
+  }
+  .eval-meta-row .label { color: var(--gray-500); font-weight: 600; margin-right: 4px; }
+  .eval-meta-row .value { color: var(--gray-900); font-weight: 700; }
+
+  .eval-cards { display: flex; gap: 10px; margin-bottom: 12px; }
+  .eval-cards .eval-card { flex: 1; min-width: 0; }
+
+  /* 정기 평가 세션 — 박스 내부 가로 배치 (반드시 한 줄) */
+  .reg-sessions { display: flex; flex-direction: row; gap: 10px; }
+  .reg-session-box {
+    flex: 1 1 0; min-width: 0;
+    background: var(--gray-50); border: 1.5px solid var(--gray-200);
+    border-radius: 6px;
+    padding: 6px 12px;
+    display: flex; flex-direction: row; align-items: center; gap: 10px;
+    white-space: nowrap;
+  }
+  .reg-session-label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--gray-500); white-space: nowrap; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .reg-session-name {
+    font-size: 10px; font-weight: 600; color: var(--gray-700);
+    flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .reg-session-score { font-size: 16px; font-weight: 700; color: var(--red); line-height: 1; flex-shrink: 0; white-space: nowrap; }
+  .reg-session-score.na { font-size: 13px; color: var(--gray-300); }
+
+  /* 코멘트 번역 — label 은 inline 으로 본문과 한 줄 시작, margin 0 */
+  .comment-inline {
+    margin: 0; padding: 0;
+    font-size: 9.5px; line-height: 1.45; color: var(--gray-700);
+    max-height: 80px; overflow: hidden;
+    white-space: pre-wrap;
+  }
+  .comment-inline-label {
+    display: inline;
+    font-size: 8.5px; font-weight: 700; color: var(--red);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-right: 5px;
+  }
+
+  .overall-comment-box {
+    border: 1.5px solid var(--gray-200); border-radius: 8px;
+    padding: 8px 12px; background: var(--gray-50);
+    font-size: 10px; line-height: 1.6; color: var(--gray-700);
+    white-space: pre-wrap; margin-bottom: 10px;
+    max-height: 110px; overflow: hidden;
+  }
+
+  /* ═══════════════════════════════════════════════════════════ */
+  /*  PAGE 2                                                      */
+  /* ═══════════════════════════════════════════════════════════ */
+  .p2-header {
+    padding: 22px 36px 14px; border-bottom: 2px solid var(--red);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .p2-title { font-size: 18px; font-weight: 800; color: var(--gray-900); }
+  .p2-subtitle { font-size: 10px; color: var(--gray-500); margin-top: 4px; letter-spacing: 0.06em; font-weight: 600; }
+  .p2-meta { font-size: 10px; color: var(--gray-500); text-align: right; }
+  .p2-meta strong { color: var(--gray-900); font-weight: 700; }
+
+  .comment-box {
+    border: 1.5px solid var(--gray-200); border-radius: 8px;
+    padding: 14px 16px; background: var(--gray-50);
+    font-size: 11px; line-height: 1.75; color: var(--gray-700);
+    margin-bottom: 14px; white-space: pre-wrap; overflow-wrap: break-word;
+  }
+  .comment-empty { color: var(--gray-300); font-style: italic; }
+  .comment-group { margin-bottom: 18px; }
+  .comment-group-title {
+    font-size: 11px; font-weight: 700; color: var(--red);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 6px; padding-bottom: 4px;
+    border-bottom: 2px solid var(--red-mid);
+  }
+  .comment-meta {
+    font-size: 9px; color: var(--gray-500); margin-bottom: 6px;
+    display: flex; gap: 14px; flex-wrap: wrap;
+  }
+  .comment-meta span strong { color: var(--gray-900); font-weight: 700; }
+</style>
+</head>
+<body data-doc-info="{{ emp_id | upper }} · NET 연간 인사 평가 · Issued {{ issue_datetime }}">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- PAGE 1 — SUMMARY                                            -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <div class="p-header">
+    <div class="p-header-top">
+      <div>
+        {% if logo_data_uri %}
+          <img src="{{ logo_data_uri }}" class="logo-img" alt="DYB NHR">
+        {% else %}
+          <span class="logo-text-fallback">DYB NHR</span>
+        {% endif %}
+      </div>
+      <div class="header-right-row">
+        <span class="report-type-badge">NET 연간 인사 평가</span>
+        <span class="issued-inline">
+          <span class="issued-label">ISSUED</span>
+          <span class="issued-date">{{ issue_date }}</span>
+        </span>
+      </div>
+    </div>
+    <div class="p-header-bottom">
+      <div style="min-width:0; flex:1;">
+        <div class="profile-name">{{ (teacher_name or emp_id) | e }}</div>
+        <div class="profile-meta">
+          <div class="meta-chip">사번 <span>{{ emp_id | e }}</span></div>
+          {% if campus %}<div class="meta-chip">캠퍼스 <span>{{ campus | e }}</span></div>{% endif %}
+          {% if eval_type %}<div class="meta-chip">유형 <span>{{ eval_type | upper | e }}</span></div>{% endif %}
+          {% if eval_sequence %}<div class="meta-chip">차수 <span>#{{ eval_sequence }}</span></div>{% endif %}
+          {% if status == 'done' %}<div class="done-badge">✓ 완료</div>{% endif %}
+        </div>
+      </div>
+      <div class="score-block">
+        {% if composite_score is not none and composite_rank and composite_rank != '—' %}
+          {% if composite_rank in ['S','A','B','C','D'] %}
+            {% set rank_cls = 'rank-' + composite_rank %}
+          {% else %}
+            {% set rank_cls = 'rank-custom' %}
+          {% endif %}
+        {% else %}
+          {% set rank_cls = 'rank-na' %}
+        {% endif %}
+        <div class="rank-badge {{ rank_cls }}">{{ composite_rank or '—' }}</div>
+        <div class="composite-badge">
+          <div class="composite-badge-label">종합 점수</div>
+          {% if composite_score is not none %}
+            <div class="composite-badge-score">{{ "%.1f" | format(composite_score) }}</div>
+          {% else %}
+            <div class="composite-badge-score na">N/A</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-wrap">
+
+    <!-- ── 개인 정보 테이블 ── -->
+    <div class="section-title">개인 정보</div>
+    <div class="info-table-wrap">
+      <table class="info-table">
+        <colgroup>
+          <col style="width:13%"><col style="width:20%">
+          <col style="width:10%"><col style="width:20%">
+          <col style="width:13%"><col style="width:24%">
+        </colgroup>
+        <!-- Row 1: 3개 데이터 -->
+        <tr>
+          <th>근무지</th><td>{{ campus or '—' }}</td>
+          <th>국적</th><td>{{ nt_nationality or '—' }}</td>
+          <th>근무 기간</th><td>{{ tenure_text or '—' }}</td>
+        </tr>
+        <!-- Row 2: 2개 데이터 (시작일, 급여일) -->
+        <tr>
+          <th>근무 시작일</th><td colspan="3">{{ nt_start_date or '—' }}</td>
+          <th>급여일</th><td>{{ salary_day or '—' }}</td>
+        </tr>
+        <!-- Row 3: 수당 종류 — 한 줄 가로 확장 -->
+        <tr>
+          <th>수당 종류</th>
+          <td colspan="5" class="allowance-td">
+            {% if current_allowances %}
+              <span class="allowance-list">
+                {% for a in current_allowances %}<span>{{ a | e }}</span>{% endfor %}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- ── 급여 조정 (transpose) ── -->
+    <div class="section-title">급여 조정</div>
+    <div class="salary-table-wrap">
+      <table class="salary-table">
+        <colgroup>
+          <col style="width:20%">
+          <col style="width:16%"><col style="width:16%">
+          <col style="width:16%"><col style="width:16%">
+          <col style="width:16%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th>
+            <th>기본급</th>
+            <th>직책 수당</th>
+            <th>역할 수당</th>
+            <th>주거 수당</th>
+            <th>총액</th>
+          </tr>
+        </thead>
+        {% set total_inc = (base_inc or 0)+(pos_inc or 0)+(role_inc or 0)+(housing_inc or 0) %}
+        {% set total_inc_class = 'inc-cell' if total_inc != 0 else 'inc-cell-zero' %}
+        <tbody>
+          <tr>
+            <td>현재 (만원)</td>
+            <td class="num">{{ base_current or 0 }}</td>
+            <td class="num">{{ pos_current or 0 }}</td>
+            <td class="num">{{ role_current or 0 }}</td>
+            <td class="num">{{ housing_current or 0 }}</td>
+            <td class="num">{{ total_current }}</td>
+          </tr>
+          <tr>
+            <td>인상 (변동)</td>
+            <td class="num {{ 'inc-cell' if base_inc and base_inc != 0 else 'inc-cell-zero' }}">{{ base_inc or 0 }}</td>
+            <td class="num {{ 'inc-cell' if pos_inc and pos_inc != 0 else 'inc-cell-zero' }}">{{ pos_inc or 0 }}</td>
+            <td class="num {{ 'inc-cell' if role_inc and role_inc != 0 else 'inc-cell-zero' }}">{{ role_inc or 0 }}</td>
+            <td class="num {{ 'inc-cell' if housing_inc and housing_inc != 0 else 'inc-cell-zero' }}">{{ housing_inc or 0 }}</td>
+            <td class="num {{ total_inc_class }}">{{ total_inc }}</td>
+          </tr>
+          <tr class="total-row">
+            <td>적용 급여</td>
+            <td class="num applied-cell">{{ (base_current or 0) + (base_inc or 0) }}</td>
+            <td class="num applied-cell">{{ (pos_current or 0) + (pos_inc or 0) }}</td>
+            <td class="num applied-cell">{{ (role_current or 0) + (role_inc or 0) }}</td>
+            <td class="num applied-cell">{{ (housing_current or 0) + (housing_inc or 0) }}</td>
+            <td class="num applied-cell">{{ applied_total }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    {% if allowance_comment %}
+    <div class="allowance-memo">
+      <span class="allowance-memo-label">Memo</span>
+      <span>{{ allowance_comment[:120] | e }}{% if allowance_comment|length > 120 %}…{% endif %}</span>
+    </div>
+    {% endif %}
+
+    <!-- ── 정기 평가 ── -->
+    <div class="section-title" style="margin-top:12px;">정기 평가</div>
+    <div class="eval-card" style="margin-bottom:14px;">
+      <div class="eval-card-header">
+        <span class="eval-card-title">최종 점수 (평균)</span>
+        {% if reg_final_score is not none %}
+          <span class="eval-card-score">{{ "%.2f" | format(reg_final_score) }}</span>
+        {% else %}
+          <span class="eval-card-score na">N/A</span>
+        {% endif %}
+      </div>
+      <div class="eval-card-body">
+        <div class="reg-sessions">
+          <div class="reg-session-box">
+            <span class="reg-session-label">1차 세션</span>
+            <span class="reg-session-name">{{ session_1_label or '—' }}</span>
+            {% if reg_score_1 is not none %}
+              <span class="reg-session-score">{{ "%.2f" | format(reg_score_1) }}</span>
+            {% else %}
+              <span class="reg-session-score na">—</span>
+            {% endif %}
+          </div>
+          <div class="reg-session-box">
+            <span class="reg-session-label">2차 세션</span>
+            <span class="reg-session-name">{{ session_2_label or '—' }}</span>
+            {% if reg_score_2 is not none %}
+              <span class="reg-session-score">{{ "%.2f" | format(reg_score_2) }}</span>
+            {% else %}
+              <span class="reg-session-score na">—</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 수업 참관 & NET ── -->
+    <div class="section-title">수업 참관 & NET 평가</div>
+    <div class="eval-cards">
+      <div class="eval-card">
+        <div class="eval-card-header">
+          <span class="eval-card-title">수업 참관</span>
+          {% if obs_score is not none %}
+            <span class="eval-card-score">{{ "%.1f" | format(obs_score) }}</span>
+          {% else %}
+            <span class="eval-card-score na">N/A</span>
+          {% endif %}
+        </div>
+        <div class="eval-card-body">
+          <div class="eval-meta-row">
+            <span><span class="label">날짜</span><span class="value">{{ obs_date or '—' }}</span></span>
+            <span><span class="label">평가자</span><span class="value">{{ (obs_rater or '—') | e }}</span></span>
+          </div>
+          {% if obs_eng %}
+          <div class="comment-inline"><span class="comment-inline-label">원본 코멘트</span>{{ obs_eng | e }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="eval-card">
+        <div class="eval-card-header">
+          <span class="eval-card-title">NET 평가</span>
+          {% if net_score is not none %}
+            <span class="eval-card-score">{{ "%.1f" | format(net_score) }}</span>
+          {% else %}
+            <span class="eval-card-score na">N/A</span>
+          {% endif %}
+        </div>
+        <div class="eval-card-body">
+          <div class="eval-meta-row">
+            <span><span class="label">날짜</span><span class="value">{{ net_date or '—' }}</span></span>
+            <span><span class="label">평가자</span><span class="value">{{ (net_rater or '—') | e }}</span></span>
+          </div>
+          {% if net_eng %}
+          <div class="comment-inline"><span class="comment-inline-label">원본 코멘트</span>{{ net_eng | e }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if other_eng %}
+    <div class="section-title" style="margin-top:10px;">종합 코멘트 (원본)</div>
+    <div class="overall-comment-box">{{ other_eng | e }}</div>
+    {% endif %}
+
+  </div><!-- /.section-wrap -->
+
+</div><!-- /.page (1) -->
+
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- PAGE 2 — TRANSLATED COMMENTS (한국어)                        -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <div class="p2-header">
+    <div>
+      <div class="p2-title">평가자 코멘트</div>
+      <div class="p2-subtitle">한국어 번역</div>
+    </div>
+    <div class="p2-meta">
+      <div><strong>{{ (teacher_name or emp_id) | e }}</strong></div>
+      <div>{{ emp_id | upper }}{% if eval_sequence %} · #{{ eval_sequence }}{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="section-wrap" style="padding-top:22px;">
+
+    <div class="comment-group">
+      <div class="comment-group-title">Class Observation</div>
+      <div class="comment-meta">
+        {% if obs_date %}<span>Date: <strong>{{ obs_date | e }}</strong></span>{% endif %}
+        {% if obs_rater %}<span>Rater: <strong>{{ obs_rater | e }}</strong></span>{% endif %}
+        {% if obs_score is not none %}<span>Score: <strong>{{ "%.1f" | format(obs_score) }}</strong></span>{% endif %}
+      </div>
+      {% if obs_eng_ko %}
+        <div class="comment-box">{{ obs_eng_ko | e }}</div>
+      {% else %}
+        <div class="comment-box comment-empty">번역 코멘트가 없습니다.</div>
+      {% endif %}
+    </div>
+
+    <div class="comment-group">
+      <div class="comment-group-title">NET Evaluation</div>
+      <div class="comment-meta">
+        {% if net_date %}<span>Date: <strong>{{ net_date | e }}</strong></span>{% endif %}
+        {% if net_rater %}<span>Rater: <strong>{{ net_rater | e }}</strong></span>{% endif %}
+        {% if net_score is not none %}<span>Score: <strong>{{ "%.1f" | format(net_score) }}</strong></span>{% endif %}
+      </div>
+      {% if net_eng_ko %}
+        <div class="comment-box">{{ net_eng_ko | e }}</div>
+      {% else %}
+        <div class="comment-box comment-empty">번역 코멘트가 없습니다.</div>
+      {% endif %}
+    </div>
+
+    {% if other_eng_ko %}
+    <div class="comment-group">
+      <div class="comment-group-title">Overall Remarks</div>
+      <div class="comment-box">{{ other_eng_ko | e }}</div>
+    </div>
+    {% endif %}
+
+  </div>
+
+</div><!-- /.page (2) -->
+
+</body>
+</html>

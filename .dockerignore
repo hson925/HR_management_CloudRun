@@ -1,0 +1,68 @@
+# ============================================================
+# .dockerignore — Docker 이미지 빌드 시 제외 목록
+# COPY . . 로 복사되는 파일을 제한합니다
+# ============================================================
+
+# === 민감 파일 (credentials) ===
+.env
+*.json
+!requirements*.json
+firebase-service-account.json
+service-account-key.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# === Firebase 관련 ===
+.firebase/
+firebase-debug.log
+firebase.json
+.firebaserc
+
+# === Git ===
+.git/
+.gitignore
+.gitconfig
+
+# === Python 캐시 ===
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# === 가상 환경 ===
+venv/
+env/
+.venv/
+
+# === IDE / 에디터 ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === 로컬 개발 도구 ===
+.cache/
+.cloudshell/
+.codeoss/
+.config/
+.docker/
+.local/
+.npm/
+.rustup/
+.ssh/
+.bash*
+.profile
+
+# === 문서 / 테스트 ===
+docs/
+tests/
+*.md
+README*
+
+# === 기타 ===
+*.log
+.DS_Store
+Thumbs.db

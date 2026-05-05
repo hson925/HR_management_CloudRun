@@ -1,0 +1,1095 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | 평가 v2 — 현황{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── 디자인 토큰 ── */
+  :root {
+    --primary: #B01116;
+    --primary-container: #c41118;
+    --surface: #ffffff;
+    --surface-lowest: #ffffff;
+    --surface-low: #f4f4f5;
+    --on-surface: #111114;
+    --on-surface-variant: #52525b;
+    --outline: #71717a;
+    --outline-variant: #d4d4d8;
+    --error: #ba1a1a;
+  }
+
+  /* ── 필터 칩 ── */
+  .filter-chip {
+    padding: .25rem .75rem; border-radius: 3px;
+    font-size: .75rem; font-weight: 600;
+    border: 1.5px solid var(--border); color: var(--text-muted);
+    cursor: pointer; transition: all .15s; background: var(--surface);
+  }
+  .filter-chip:hover { border-color: var(--primary); color: var(--primary); background: var(--surface); }
+  .filter-chip.active { background: var(--text-strong); border-color: var(--text-strong); color: var(--surface); box-shadow: none; }
+
+  /* ── btn-primary ── */
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--text-strong);
+    color: var(--surface); font-weight: 700; border: 1.5px solid var(--text-strong);
+    border-radius: 3px; cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn-primary:active:not(:disabled) { opacity: .85; }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── btn-secondary ── */
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); color: var(--text); font-weight: 600;
+    border: 1.5px solid var(--border); border-radius: 3px;
+    cursor: pointer; transition: all .15s;
+  }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--surface); box-shadow: none; transform: none; }
+  .btn-secondary:active:not(:disabled) { opacity: .85; }
+  .btn-secondary:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── btn-danger ── */
+  .btn-danger {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); color: #dc2626; font-weight: 600;
+    border: 1.5px solid #fca5a5; border-radius: 3px;
+    cursor: pointer; transition: all .15s;
+  }
+  .btn-danger:hover:not(:disabled) { background: var(--surface); border-color: #dc2626; }
+  .btn-danger:active:not(:disabled) { opacity: .85; }
+
+  /* ── 인풋/셀렉트 공통 ── */
+  input:not([type=range]):not([type=checkbox]):not(.weight-input):not(.mincount-input),
+  select, textarea {
+    transition: border-color .15s;
+    border-color: var(--border) !important;
+    border-radius: 3px;
+  }
+  input:not([type=range]):not([type=checkbox]):not(.weight-input):not(.mincount-input):focus,
+  select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px var(--primary-soft) !important;
+  }
+
+  /* ── 카드 (캠퍼스 평가 현황 드롭다운) ── */
+  .campus-card { background: var(--surface); border: 2px solid var(--border); border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-card); transition: border-color .15s, box-shadow .15s; }
+  .campus-card:hover { border-color: var(--text-muted); box-shadow: var(--shadow-md); }
+  .campus-header { display: flex; justify-content: space-between; align-items: center; padding: 11px 16px; background: var(--surface-low); border-bottom: 2px solid var(--border); cursor: pointer; user-select: none; transition: background .15s; color: var(--text-strong); }
+  .campus-header:hover { background: var(--border-soft); }
+
+  /* campus-body: 외부 래퍼가 overflow/max-height 담당, 내부 div가 padding 담당 */
+  .campus-body-inner { /* JS에서 p-3 space-y-2로 설정 */ }
+
+  .teacher-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 14px; border-radius: 4px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); gap: 12px; cursor: pointer; transition: border-color .15s, background .15s; flex-wrap: wrap; }
+  .teacher-row .teacher-info { min-width: 0; flex: 1 1 180px; }
+  .teacher-row .teacher-status { flex-shrink: 0; flex-wrap: wrap; display: flex; gap: 6px; align-items: center; justify-content: flex-end; max-width: 55%; }
+  .teacher-row:hover { border-color: var(--primary); background: var(--primary-soft); box-shadow: none; transform: none; }
+  .teacher-row.done { border-color: #86efac; background: #f0fdf4; }
+  .teacher-row.done:hover { border-color: #22c55e; box-shadow: none; }
+
+  /* ── 배지 ── */
+  .badge-done { background: #f0fdf4; color: #15803d; border: 1.5px solid #86efac; font-weight: 700; }
+  .badge-pending { background: #fefce8; color: #854d0e; border: 1.5px solid #fde047; font-weight: 700; }
+  .badge-inprogress { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #93c5fd; font-weight: 700; }
+  .badge-over { background: #faf5ff; color: #6d28d9; border: 1.5px solid #c4b5fd; font-weight: 700; }
+  .badge-type-position { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .badge-type-regular { background: var(--surface-low); color: var(--text-muted); border: 1px solid var(--border); }
+  .badge-type-tl { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+  .badge-type-sub { background: #fefce8; color: #713f12; border: 1px solid #fde68a; }
+  .badge-type-stl { background: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8; }
+
+  /* ── 모달 ── (backdrop 은 layout.html 의 공통 CSS 사용) */
+  .modal-box { background: var(--surface); color: var(--text); border-radius: 4px; width: 100%; max-height: 88vh; overflow-y: auto; overscroll-behavior: contain; box-shadow: var(--shadow-md); animation: modalIn .15s ease; border: 1.5px solid var(--border); }
+  @keyframes modalIn { from { opacity:0; transform:scale(.97) translateY(6px) } to { opacity:1; transform:none } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin .7s linear infinite; display:inline-block; }
+  .modal-header { position: sticky; top: 0; background: var(--surface); color: var(--text-strong); padding: 18px 22px 14px; border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; z-index: 1; box-shadow: none; }
+
+  /* ── 점수 배지 ── */
+  .score-badge { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 3px; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .score-badge.s1,.score-badge.s2 { background: #fee2e2; color: #b91c1c; }
+  .score-badge.s3 { background: #fef9c3; color: #92400e; }
+  .score-badge.s4,.score-badge.s5 { background: #dcfce7; color: #15803d; }
+
+  /* ── btn-bulk ── */
+  .btn-bulk {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--text-strong); color: var(--surface); font-weight: 700;
+    border: 1.5px solid var(--text-strong); border-radius: 3px;
+    cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-bulk:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: #fff; transform: none; box-shadow: none; filter: none; }
+  .btn-bulk:active:not(:disabled) { opacity: .85; }
+  .btn-bulk:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── btn-bulk-action ── */
+  .btn-bulk-action {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--text-strong); color: var(--surface); font-weight: 700;
+    border: 1.5px solid var(--text-strong); border-radius: 3px;
+    cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-bulk-action:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: #fff; transform: none; box-shadow: none; filter: none; }
+  .btn-bulk-action:active:not(:disabled) { opacity: .85; }
+  .btn-bulk-action:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ── btn-bulk-cancel ── */
+  .btn-bulk-cancel {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface); color: var(--text); font-weight: 600;
+    border: 1.5px solid var(--border); border-radius: 3px;
+    cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-bulk-cancel:hover { border-color: var(--text-muted); color: var(--text-strong); transform: none; box-shadow: none; filter: none; }
+  .btn-bulk-cancel:active { opacity: .85; }
+
+  /* ── 토스트 ── */
+  #toastContainer { pointer-events: none; position: fixed; top: 80px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 8px; }
+
+  /* 커스텀 세션 드롭다운: layout.html 의 .dyb-dd-* 공통 클래스 사용. 모달 안의
+     우측 드롭다운은 `.dyb-dd-menu.to-right` 로 위치만 추가 지정. */
+
+  /* ── 모달 닫기 버튼 hover ── */
+  .modal-header button[onclick*="closeModal"] { transition: all .15s; }
+  .modal-header button[onclick*="closeModal"]:hover {
+    background: var(--surface-low) !important; color: var(--primary) !important; transform: none;
+  }
+
+  /* ── 툴팁 (의도적으로 고정 — 짙은 남색 배경 + 라이트 블루 텍스트로 양쪽 테마 모두 가독) ── */
+  .tt { position: relative; }
+  .tt::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+    background: #1e3a5f; color: #e0f0ff;
+    font-size: 11px; font-weight: 500; line-height: 1.6;
+    padding: 9px 13px; border-radius: 10px;
+    border: 1.5px solid #3b82f6;
+    white-space: pre-wrap; max-width: 320px; min-width: 200px; text-align: left;
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+    z-index: 9999; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  }
+  .tt::before {
+    content: ''; position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+    border: 6px solid transparent; border-bottom-color: #3b82f6;
+    pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 9999;
+  }
+  .tt:hover::after, .tt:hover::before { opacity: 1; }
+
+  /* ── 응답 리스트 아이콘 버튼 ── */
+  .icon-action-btn {
+    min-width: 30px; min-height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all .15s; border-radius: 3px;
+  }
+  .icon-action-btn:hover { transform: none; opacity: .75; }
+
+  input.bulk-checkbox { accent-color: #B01116; }
+
+  /* ── Bulk 체크박스 래퍼: 항상 DOM에 존재, CSS 전환으로 표시/숨김 — DOM 재렌더 없이 끊김 방지 ── */
+  .bulk-cb-wrap {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: width 0.18s ease, opacity 0.15s ease;
+  }
+  .bulk-mode .bulk-cb-wrap { width: 20px; opacity: 1; }
+
+  /* campus-bulk-btn: 항상 DOM에 존재, bulk 모드에서만 표시 */
+  .campus-bulk-btn { display: none; }
+  .bulk-mode .campus-bulk-btn { display: inline-flex; align-items: center; }
+
+  /* ── 캠퍼스 카드 부드러운 펼침/접기 (grid 트릭: 즉시 반응, 지연 없음) ── */
+  .campus-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    overflow: hidden; /* 외부도 클립 — 렌더링 엣지케이스 방지 */
+    transition: grid-template-rows 0.3s ease;
+  }
+  .campus-body.expanded {
+    grid-template-rows: 1fr;
+  }
+  /* min-height:0 없으면 grid 아이템이 콘텐츠 높이 아래로 줄지 않아 데이터 노출 */
+  .campus-body > div {
+    overflow: hidden;
+    min-height: 0;
+    /* padding을 접힌 상태에서 0으로 강제 — p-3의 12px 패딩이 빈 공간 만드는 현상 방지 */
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .campus-body.expanded > div {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  /* ── Detail 모달 — 역할 섹션 / 평가자 응답 본문 토글 (grid-rows 트릭, 캠퍼스 카드와 일관) ── */
+  .detail-role-body, .detail-eval-details {
+    display: grid;
+    grid-template-rows: 0fr;
+    overflow: hidden;
+    transition: grid-template-rows 0.3s ease;
+  }
+  .detail-role-body.expanded, .detail-eval-details.expanded {
+    grid-template-rows: 1fr;
+  }
+  .detail-role-body > div, .detail-eval-details > div {
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* 헤더 클릭 가능 + chevron 회전 (.expanded 클래스로만 토글) */
+  .detail-role-header, .detail-eval-header { cursor: pointer; user-select: none; transition: background 0.15s ease; }
+  .detail-role-header:hover, .detail-eval-header:hover { background: var(--surface-low); }
+  .detail-role-header .chevron-icon, .detail-eval-header .chevron-icon {
+    transition: transform 0.25s ease;
+    transform: rotate(0);
+  }
+  .detail-role-header.expanded .chevron-icon,
+  .detail-eval-header.expanded .chevron-icon {
+    transform: rotate(180deg);
+  }
+
+  /* evalDiv 헤더 — 펼침 상태에서만 헤더와 본문 사이 마진 적용 (grid-rows 0.3s 와 박자 맞춤) */
+  .detail-eval-header { margin-bottom: 0; transition: margin-bottom 0.25s ease; }
+  .detail-eval-header.expanded { margin-bottom: 0.75rem; }
+
+  /* ── 직책 필터 패널: 가로 방향 인라인 확장 ── */
+  .position-filter-panel {
+    display: grid;
+    grid-template-columns: 0fr;
+    opacity: 0;
+    overflow: hidden;
+    transition: grid-template-columns 0.28s ease, opacity 0.22s ease;
+  }
+  .position-filter-panel.open {
+    grid-template-columns: 1fr;
+    opacity: 1;
+  }
+  .position-filter-panel > div {
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.375rem;
+    padding-left: 0.25rem;
+  }
+
+  /* ── Bulk Action Bar: Position 필터와 동일한 가로 grid 확장 ── */
+  .bulk-action-bar {
+    display: grid;
+    grid-template-columns: 0fr;
+    opacity: 0;
+    overflow: hidden;
+    transition: grid-template-columns 0.28s ease, opacity 0.22s ease;
+  }
+  .bulk-action-bar.open {
+    grid-template-columns: 1fr;
+    opacity: 1;
+  }
+  .bulk-action-bar > div {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* ── 직책 아코디언 영역 슬라이드인 ── */
+  @keyframes typeAccordionIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  #typeAccordionWrap {
+    animation: typeAccordionIn 0.22s ease;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     Dark mode — 시맨틱 색(badge, done state, score badge) 만 override.
+     중립 색은 위에서 var(...) 로 토큰화했으므로 자동 전환됨.
+     ═══════════════════════════════════════════════════════════════════════ */
+  html[data-theme="dark"] .teacher-row.done {
+    border-color: rgba(34, 197, 94, .45);
+    background: rgba(22, 163, 74, .10);
+  }
+  html[data-theme="dark"] .teacher-row.done:hover {
+    border-color: rgba(34, 197, 94, .70);
+  }
+
+  html[data-theme="dark"] .badge-done {
+    background: rgba(22, 163, 74, .15); color: #86efac; border-color: rgba(34, 197, 94, .35);
+  }
+  html[data-theme="dark"] .badge-pending {
+    background: rgba(217, 119, 6, .15); color: #fde047; border-color: rgba(217, 119, 6, .35);
+  }
+  html[data-theme="dark"] .badge-inprogress {
+    background: rgba(37, 99, 235, .15); color: #93c5fd; border-color: rgba(37, 99, 235, .35);
+  }
+  html[data-theme="dark"] .badge-over {
+    background: rgba(109, 40, 217, .18); color: #c4b5fd; border-color: rgba(109, 40, 217, .40);
+  }
+
+  html[data-theme="dark"] .badge-type-position {
+    background: rgba(37, 99, 235, .15); color: #93c5fd; border-color: rgba(37, 99, 235, .35);
+  }
+  html[data-theme="dark"] .badge-type-tl {
+    background: rgba(109, 40, 217, .18); color: #c4b5fd; border-color: rgba(109, 40, 217, .40);
+  }
+  html[data-theme="dark"] .badge-type-sub {
+    background: rgba(180, 83, 9, .18); color: #fde68a; border-color: rgba(180, 83, 9, .40);
+  }
+  html[data-theme="dark"] .badge-type-stl {
+    background: rgba(190, 24, 93, .18); color: #fbcfe8; border-color: rgba(190, 24, 93, .40);
+  }
+
+  html[data-theme="dark"] .score-badge.s1,
+  html[data-theme="dark"] .score-badge.s2 {
+    background: rgba(220, 38, 38, .18); color: #fca5a5;
+  }
+  html[data-theme="dark"] .score-badge.s3 {
+    background: rgba(217, 119, 6, .18); color: #fde047;
+  }
+  html[data-theme="dark"] .score-badge.s4,
+  html[data-theme="dark"] .score-badge.s5 {
+    background: rgba(22, 163, 74, .18); color: #86efac;
+  }
+
+  html[data-theme="dark"] .btn-danger {
+    color: #fca5a5; border-color: rgba(220, 38, 38, .45);
+  }
+  html[data-theme="dark"] .btn-danger:hover:not(:disabled) {
+    border-color: #fca5a5;
+  }
+
+  /* 활성 세션 배지 (bg-emerald-50 / border-emerald-200 Tailwind 하드코딩) */
+  html[data-theme="dark"] #activeSessionBadge {
+    background: rgba(16, 185, 129, .12) !important;
+    border-color: rgba(16, 185, 129, .35) !important;
+    color: #86efac !important;
+  }
+  html[data-theme="dark"] #activeSessionBadge .text-emerald-500 {
+    color: rgba(134, 239, 172, .7) !important;
+  }
+
+  /* Tailwind 시맨틱 다크 — admin score 경고 배너, 서술형 문항 박스 등 */
+  html[data-theme="dark"] .bg-amber-50    { background-color: rgba(217,119,6,.12) !important; }
+  html[data-theme="dark"] .border-amber-200 { border-color: rgba(217,119,6,.40) !important; }
+  html[data-theme="dark"] .text-amber-500 { color: #fbbf24 !important; }
+  html[data-theme="dark"] .text-amber-600 { color: #fcd34d !important; }
+  html[data-theme="dark"] .text-amber-700,
+  html[data-theme="dark"] .text-amber-800 { color: #fde68a !important; }
+  /* 서술형 문항 (open-ended) 등 일반 배경 */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50,
+  html[data-theme="dark"] .bg-gray-100    { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .bg-zinc-50,
+  html[data-theme="dark"] .bg-zinc-100    { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .bg-slate-50,
+  html[data-theme="dark"] .bg-slate-100   { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500  { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200,
+  html[data-theme="dark"] .border-gray-300 { border-color: var(--border) !important; }
+  /* blue/red/green/purple/orange 시맨틱 (서술형 답변 박스 등) */
+  html[data-theme="dark"] .bg-blue-50     { background-color: rgba(59,130,246,.12) !important; }
+  html[data-theme="dark"] .bg-blue-100    { background-color: rgba(59,130,246,.18) !important; }
+  html[data-theme="dark"] .border-blue-100,
+  html[data-theme="dark"] .border-blue-200 { border-color: rgba(59,130,246,.40) !important; }
+  html[data-theme="dark"] .text-blue-300  { color: #93c5fd !important; opacity: .65; }
+  html[data-theme="dark"] .text-blue-400,
+  html[data-theme="dark"] .text-blue-500,
+  html[data-theme="dark"] .text-blue-600,
+  html[data-theme="dark"] .text-blue-700,
+  html[data-theme="dark"] .text-blue-800 { color: #93c5fd !important; }
+  /* yellow / slate / green 시맨틱 (서술형 번역 상태 배지) */
+  html[data-theme="dark"] .bg-yellow-100  { background-color: rgba(234,179,8,.18) !important; }
+  html[data-theme="dark"] .border-yellow-200 { border-color: rgba(234,179,8,.40) !important; }
+  html[data-theme="dark"] .bg-yellow-400  { background-color: #fde047 !important; }
+  html[data-theme="dark"] .text-yellow-700 { color: #fde047 !important; }
+  html[data-theme="dark"] .bg-slate-100   { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .border-slate-200 { border-color: var(--outline-variant) !important; }
+  html[data-theme="dark"] .text-slate-600 { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .bg-green-100   { background-color: rgba(34,197,94,.18) !important; }
+  html[data-theme="dark"] .border-green-200 { border-color: rgba(34,197,94,.40) !important; }
+  html[data-theme="dark"] .bg-red-50      { background-color: rgba(220,38,38,.12) !important; }
+  html[data-theme="dark"] .bg-red-100     { background-color: rgba(220,38,38,.18) !important; }
+  html[data-theme="dark"] .border-red-200 { border-color: rgba(220,38,38,.40) !important; }
+  html[data-theme="dark"] .text-red-700,
+  html[data-theme="dark"] .text-red-600 { color: #fca5a5 !important; }
+  html[data-theme="dark"] .bg-green-50,
+  html[data-theme="dark"] .bg-emerald-50  { background-color: rgba(34,197,94,.12) !important; }
+  html[data-theme="dark"] .text-green-700,
+  html[data-theme="dark"] .text-emerald-700 { color: #86efac !important; }
+  html[data-theme="dark"] .bg-purple-50,
+  html[data-theme="dark"] .bg-violet-50   { background-color: rgba(139,92,246,.12) !important; }
+  html[data-theme="dark"] .text-purple-700,
+  html[data-theme="dark"] .text-violet-700 { color: #c4b5fd !important; }
+
+  /* ── 첫 방문자용 세션 선택 어텐션 힌트 (펄스 링 + 화살표) ──
+     localStorage 'dyb_status_session_seen' 미설정 + URL ?session 미지정 시
+     statusSessionAttention.show() 가 클래스 추가. 12초 또는 트리거 클릭 시 해제. */
+  .dyb-dd-trigger.status-sess-attn { position: relative; }
+  .dyb-dd-trigger.status-sess-attn::after {
+    content: '';
+    position: absolute; inset: -6px;
+    border: 2px solid var(--primary);
+    border-radius: 9999px;
+    animation: statusSessPulse 1.4s ease-out infinite;
+    pointer-events: none;
+  }
+  @keyframes statusSessPulse {
+    0%   { transform: scale(.96); opacity: .85; box-shadow: 0 0 0 0 rgba(176,17,22,.45); }
+    70%  { transform: scale(1.05); opacity: 0;    box-shadow: 0 0 0 14px rgba(176,17,22,0); }
+    100% { transform: scale(1.05); opacity: 0; }
+  }
+  .status-sess-attn-arrow {
+    position: fixed;
+    /* top/left 은 JS 가 trigger bounding rect 기준으로 주입 */
+    transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    pointer-events: none;
+    animation: statusSessArrowBob 1.2s ease-in-out infinite;
+    z-index: 9999;
+  }
+  .status-sess-attn-arrow .arrow-tip {
+    width: 0; height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 11px solid var(--primary);
+  }
+  .status-sess-attn-arrow .arrow-text {
+    font-size: 11px; font-weight: 800; letter-spacing: .03em;
+    color: #fff; background: var(--primary);
+    padding: 4px 10px; border-radius: 9999px;
+    box-shadow: 0 4px 14px rgba(176,17,22,.40);
+    white-space: nowrap;
+  }
+  @keyframes statusSessArrowBob {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50%      { transform: translateX(-50%) translateY(-4px); }
+  }
+  .status-sess-attn-arrow.fade-out { animation: statusSessArrowFade .3s ease forwards; }
+  @keyframes statusSessArrowFade {
+    to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[1400px] mx-auto pb-10 px-2 sm:px-4 mt-2">
+
+  <!-- 헤더 -->
+  <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-bar-chart-fill" style="color:var(--primary)"></i> 평가 현황
+        <span class="text-sm font-bold text-white px-2.5 py-0.5 rounded-full ml-1" style="background:var(--primary)">v2</span>
+      </h1>
+      <p class="text-sm mt-1" style="color:var(--on-surface-variant)">평가 제출 현황 <span class="text-xs opacity-60">— 관리자 전용</span></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- Refresh -->
+      <button onclick="forceReloadStatus()" class="btn-secondary px-3 py-2.5 tt" data-tip="평가 현황 데이터를 새로고침합니다.&#10;Refresh evaluation status data." style="position:relative;z-index:100;">
+        <i class="bi bi-arrow-clockwise text-base"></i>
+      </button>
+      <!-- NT Cache -->
+      <button onclick="refreshNtCache()" id="ntCacheBtn" class="btn-secondary px-3 py-2.5 flex-col gap-0 leading-tight tt" data-tip="교사 이름·닉네임 캐시를 갱신합니다.&#10;Refresh teacher name/nickname cache." style="position:relative;z-index:100;">
+        <span class="flex items-center gap-1.5"><i class="bi bi-database-fill-gear text-sm"></i> <span class="text-sm font-bold">NT 캐시</span></span>
+        <span class="text-[10px] opacity-60 hidden sm:block">Refresh</span>
+      </button>
+      <!-- Roster Cache -->
+      <button onclick="refreshRosterCache()" id="rosterCacheBtn" class="btn-secondary px-3 py-2.5 flex-col gap-0 leading-tight tt" data-tip="직원 명단 캐시를 갱신합니다.&#10;Refresh staff roster cache." style="position:relative;z-index:100;">
+        <span class="flex items-center gap-1.5"><i class="bi bi-people-fill text-sm"></i> <span class="text-sm font-bold">명단</span></span>
+        <span class="text-[10px] opacity-60 hidden sm:block">Refresh</span>
+      </button>
+      <!-- Active Session Badge -->
+      <div id="activeSessionBadge" class="hidden items-center gap-2 px-3 py-2 bg-emerald-50 border-2 border-emerald-200 rounded-xl font-bold text-emerald-700">
+        <i class="bi bi-calendar2-check-fill text-sm"></i>
+        <div class="flex flex-col leading-tight">
+          <span class="text-sm" id="activeSessionLabel">-</span>
+          <span class="text-[10px] font-normal text-emerald-500 hidden sm:block" id="activeSessionDates"></span>
+        </div>
+      </div>
+      <!-- New Evaluation -->
+      <a href="/eval-v2" class="btn-primary px-4 py-2.5 rounded-xl flex-col gap-0 leading-tight">
+        <span class="flex items-center gap-1.5"><i class="bi bi-pencil-fill text-sm"></i> <span class="text-sm font-bold">평가 입력</span></span>
+        <span class="text-[10px] opacity-70 hidden sm:block">New Eval</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- 평가 현황 패널 -->
+  <div id="panel-status">
+    <div class="flex flex-col sm:flex-row gap-3 mb-4">
+      <div class="relative flex-1 max-w-xs">
+        <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-sm" style="color:var(--outline)"></i>
+        <input type="text" id="searchInput" placeholder="이름으로 검색… / Search by name" oninput="debouncedApplyFilters()"
+          class="w-full pl-9 pr-4 py-2.5 border-2 rounded-xl text-sm font-medium focus:outline-none"
+          style="background:var(--surface-lowest);border-color:var(--outline-variant);color:var(--on-surface)">
+      </div>
+      <!-- Position 필터: 토글 버튼 + 패널 안에 [전체 + 직책 chip 들] 슬라이드인 -->
+      <div class="flex items-center gap-2 overflow-hidden">
+        <button id="positionFilterBtn" onclick="togglePositionFilter()"
+          class="filter-chip flex items-center gap-1.5 flex-shrink-0" style="padding:7px 14px;">
+          <i class="bi bi-funnel-fill text-xs"></i>
+          <span>직책 / Position</span>
+          <span id="positionFilterBadge" class="hidden ml-0.5 text-[10px] font-extrabold px-1.5 py-0 rounded-full bg-[#B01116] text-white">0</span>
+          <i class="bi bi-chevron-right text-[10px] ml-0.5 transition-transform duration-200" id="positionFilterChevron"></i>
+        </button>
+        <div id="positionFilterPanel" class="position-filter-panel">
+          <div>
+            <button class="filter-chip active flex-shrink-0" data-filter-type="" onclick="setTypeFilter(this,'')">전체</button>
+            {% for type_key, type_label in eval_types.items() %}
+            <button class="filter-chip flex-shrink-0" data-filter-type="{{ type_key }}" onclick="setTypeFilter(this,'{{ type_key }}')">{{ type_label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        <!-- 완료/미완료 필터 — allDone 기반. 토글 + 패널 안에 [전체|완료|미완료] -->
+        <span class="flex-shrink-0 mx-1" style="width:1px;height:20px;background:var(--outline-variant)"></span>
+        <button id="completionFilterBtn" onclick="toggleCompletionFilter()"
+          class="filter-chip flex items-center gap-1.5 flex-shrink-0" style="padding:7px 14px;">
+          <i class="bi bi-clipboard-check-fill text-xs"></i>
+          <span>진행 상태 / Status</span>
+          <span id="completionFilterBadge" class="hidden ml-0.5 text-[10px] font-extrabold px-1.5 py-0 rounded-full bg-[#B01116] text-white">0</span>
+          <i class="bi bi-chevron-right text-[10px] ml-0.5 transition-transform duration-200" id="completionFilterChevron"></i>
+        </button>
+        <div id="completionFilterPanel" class="position-filter-panel">
+          <div>
+            <button class="filter-chip active flex-shrink-0" data-filter-completion="" onclick="setCompletionFilter(this,'')"><i class="bi bi-list-ul text-[10px] mr-1"></i>전체</button>
+            <button class="filter-chip flex-shrink-0" data-filter-completion="done" onclick="setCompletionFilter(this,'done')"><i class="bi bi-check-circle-fill text-[10px] mr-1" style="color:#16a34a"></i>완료</button>
+            <button class="filter-chip flex-shrink-0" data-filter-completion="pending" onclick="setCompletionFilter(this,'pending')"><i class="bi bi-clock-fill text-[10px] mr-1" style="color:#d97706"></i>미완료</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mb-4 flex items-center gap-3 flex-wrap min-h-[48px]">
+      <!-- All Submissions -->
+      <button onclick="openSubmissionsModal()" class="btn-secondary px-4 py-2 flex-col gap-0 leading-tight tt" data-tip="평가자별 제출 현황을 조회합니다.&#10;View submission status by evaluator.">
+        <span class="flex items-center gap-1.5"><i class="bi bi-table text-sm"></i> <span class="text-sm font-bold">전체 제출 현황</span></span>
+        <span class="text-[10px] opacity-60 hidden sm:block">All Submissions</span>
+      </button>
+      <!-- Export CSV -->
+      <button onclick="exportCsv()" class="btn-secondary px-4 py-2 flex-col gap-0 leading-tight tt" data-tip="응답 데이터를 Excel로 다운로드합니다. 직책별 시트로 분리되며 세부 문항 점수가 포함됩니다.&#10;Download response data as Excel. Split by position with detailed scores.">
+        <span class="flex items-center gap-1.5"><i class="bi bi-file-earmark-excel text-sm"></i> <span class="text-sm font-bold">Excel 내보내기</span></span>
+        <span class="text-[10px] opacity-60 hidden sm:block">Export</span>
+      </button>
+      <!-- Session Select (Custom) -->
+      <div class="flex items-center gap-2">
+        <i class="bi bi-calendar2-range text-sm" style="color:var(--outline)"></i>
+        <div class="relative inline-block" id="statusSessionWrap">
+          <div class="dyb-dd-trigger" id="statusSessionTrigger" onclick="toggleCustomSelect('statusSession')" style="min-width:200px;">
+            <span id="statusSessionLabel" style="flex:1;overflow:hidden;text-overflow:ellipsis;">— 세션 선택 / Select Session —</span>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+          <div class="dyb-dd-menu" id="statusSessionDropdown">
+            <div class="dyb-dd-option" style="color:#71717a;" onclick="pickSession('statusSession','','— 세션 선택 / Select Session —')">— 세션 선택 / Select Session —</div>
+          </div>
+          <select id="statusSessionSelect" onchange="onStatusSessionChange(this.value)" class="sr-only"></select>
+        </div>
+      </div>
+      <!-- Bulk Report + Action Bar (Position 필터와 동일 방식: 버튼 유지 + 오른쪽으로 확장) -->
+      <div class="ml-auto flex items-center gap-2 flex-shrink-0">
+        <button onclick="toggleBulkMode()" id="bulkModeBtn" class="btn-bulk px-4 py-2 flex-col gap-0 leading-tight tt" data-tip="여러 교사를 선택하여 보고서를 일괄 생성합니다.&#10;Select multiple teachers to generate reports in bulk.">
+          <span class="flex items-center gap-1.5"><i class="bi bi-check2-square text-sm"></i> <span class="text-sm font-bold">일괄 보고서</span></span>
+          <span class="text-[10px] opacity-70 hidden sm:block">Bulk Report</span>
+        </button>
+        <div id="bulkActionBar" class="bulk-action-bar">
+          <div class="flex items-center gap-2 px-3 py-2 rounded-2xl border-2" style="border-color:#1f2937;background:var(--surface-lowest)">
+            <span id="bulkSelectedCount" class="text-sm font-bold" style="color:var(--on-surface-variant)">0명 선택</span>
+            <button id="toggleSelectBtn" onclick="toggleSelectAll()" class="text-xs font-bold px-2.5 py-1.5 transition-colors" style="border:1.5px solid #d4d4d8;border-radius:3px;color:#3f3f46;background:#fff"><i class="bi bi-check2-all"></i> 전체 선택 / Select All</button>
+            <button onclick="generateBulkReports()" id="bulkGenerateBtn" disabled class="btn-bulk-action px-4 py-2 flex-col gap-0 leading-tight disabled:opacity-40 disabled:cursor-not-allowed">
+              <span class="flex items-center gap-1.5"><i class="bi bi-file-earmark-pdf-fill text-sm"></i> <span class="text-sm font-bold">생성</span></span>
+              <span class="text-[10px] opacity-70 hidden sm:block">Generate</span>
+            </button>
+            <button onclick="bulkTrashSelectedReports()" id="bulkTrashBtn" disabled class="px-4 py-2 flex-col gap-0 leading-tight disabled:opacity-40 disabled:cursor-not-allowed transition-colors" style="border:2px solid var(--error);border-radius:6px;color:var(--error);background:#fff">
+              <span class="flex items-center gap-1.5"><i class="bi bi-trash3-fill text-sm"></i> <span class="text-sm font-bold">보고서 삭제</span></span>
+              <span class="text-[10px] opacity-70 hidden sm:block">Trash</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="statusLoading" class="hidden items-center gap-3 py-12 justify-center" style="color:var(--outline)">
+      <div class="w-6 h-6 rounded-full animate-spin" style="border:3px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+      <span class="text-sm font-medium">불러오는 중...</span>
+    </div>
+    <div id="typeAccordionWrap" class="space-y-3" style="display:none;"></div>
+    <div id="statusContent" class="space-y-4" style="display:none;"></div>
+  </div>
+
+</div>
+
+<!-- ── 세부 모달 ── -->
+<div id="detailModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('detailModal')">
+  <div class="modal-box" style="max-width:900px;">
+    <div class="modal-header">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <span id="modalName" class="text-xl font-extrabold" style="color:var(--on-surface)"></span>
+          <span id="modalTypeBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-full"></span>
+        </div>
+        <p id="modalMeta" class="text-sm" style="color:var(--on-surface-variant)"></p>
+      </div>
+      <div class="flex items-center gap-3 flex-shrink-0 ml-auto pl-4">
+        <div class="relative inline-block" id="modalSessionWrap">
+          <div class="dyb-dd-trigger dyb-dd-sm" id="modalSessionTrigger" onclick="toggleModalSelect()" style="min-width:140px;">
+            <span id="modalSessionLabel" style="flex:1;overflow:hidden;text-overflow:ellipsis;">전체 세션</span>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+          <div class="dyb-dd-menu to-right" id="modalSessionDropdown" style="z-index:9100;"></div>
+        </div>
+        <select id="modalSessionSelect" onchange="onModalSessionChange(this.value)" class="sr-only"></select>
+        <button onclick="openDriveFolder()" id="driveFolderBtn"
+          class="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border-2 border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-colors">
+          <i class="bi bi-folder2-open"></i> Drive
+        </button>
+        <button onclick="generateReport()" id="generateReportBtn"
+          class="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border-2 border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors">
+          <i class="bi bi-file-earmark-pdf-fill"></i> 보고서 생성
+        </button>
+        <button onclick="trashReport()" id="trashReportBtn"
+          class="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border-2 border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors tt"
+          data-tip="선택한 세션의 보고서를 Drive 휴지통으로 이동합니다.&#10;Move the selected session's report to Drive trash.">
+          <i class="bi bi-trash3"></i> 보고서 삭제
+        </button>
+        <button onclick="closeModal('detailModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg transition-colors" style="background:var(--surface-low);color:var(--on-surface-variant)">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+    <div id="modalBody" class="p-6 space-y-5"></div>
+  </div>
+</div>
+
+<!-- ── 평가 마감 알림 모달 ── -->
+<div id="notifyModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('notifyModal')">
+  <div class="modal-box" style="max-width:780px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-header">
+      <div>
+        <h2 class="text-lg font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-bell-fill" style="color:var(--primary)"></i> 평가 마감 알림 발송
+        </h2>
+        <p class="text-sm mt-0.5" style="color:var(--on-surface-variant)">평가 마감 알림을 발송합니다.</p>
+      </div>
+      <button onclick="closeModal('notifyModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg transition-colors flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <!-- 세션 정보 -->
+    <div class="px-5 py-3 border-b flex items-center gap-4" style="border-color:var(--outline-variant);background:var(--surface-low)">
+      <div class="flex items-center gap-2">
+        <i class="bi bi-calendar2-check text-sm" style="color:var(--primary)"></i>
+        <span class="text-sm font-extrabold" style="color:var(--on-surface)" id="notifySessionLabel">—</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <i class="bi bi-calendar2-x text-sm text-rose-500"></i>
+        <span class="text-sm font-bold" style="color:var(--on-surface-variant)">마감일: <span id="notifySessionDeadline" class="text-rose-600">—</span></span>
+      </div>
+    </div>
+
+    <div class="p-5 space-y-5">
+
+      <!-- 대상 설정 -->
+      <div class="rounded-xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant)">
+        <h3 class="text-sm font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-people-fill" style="color:var(--primary)"></i> 발송 대상
+        </h3>
+        <div class="flex flex-wrap gap-3">
+          <div class="flex-1 min-w-[160px]">
+            <label class="text-xs font-bold mb-1 block" style="color:var(--on-surface-variant)">캠퍼스</label>
+            <select id="notifyCampusFilter" class="w-full text-sm font-bold border-2 rounded-lg px-3 py-2 focus:outline-none" style="background:var(--surface-lowest);border-color:var(--outline-variant);color:var(--on-surface)">
+              <option value="">전체 캠퍼스</option>
+              <option value="Campus A">Campus A (CMA)</option><option value="Campus B">Campus B (CMB)</option>
+              <option value="Campus C">Campus C (CMC)</option><option value="Campus D">Campus D (CMD)</option>
+              <option value="Campus E">Campus E (CME)</option><option value="Campus F">Campus F (CMF)</option>
+              <option value="Campus G">Campus G (CMG)</option><option value="Campus H">Campus H (CMH)</option>
+              <option value="Campus I">Campus I (CMI)</option><option value="Campus J">Campus J (CMJ)</option>
+              <option value="Campus K">Campus K (CMK)</option><option value="Campus L">Campus L (CML)</option>
+              <option value="Campus M">Campus M (CMM)</option><option value="SUB">SUB</option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <label class="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border-2 transition-colors" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+              <input type="checkbox" id="notifyIncompleteOnly" class="w-4 h-4 rounded accent-red-600">
+              <div>
+                <div class="text-sm font-bold" style="color:var(--on-surface)">미제출자만</div>
+                <div class="text-xs" style="color:var(--outline)">미제출자만 발송</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 언어 선택 -->
+      <div class="rounded-xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant)">
+        <h3 class="text-sm font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-translate" style="color:var(--primary)"></i> 발송 언어
+        </h3>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="notifyLang" value="en" id="notifyLangEn" checked onchange="updateNotifyLangView()" class="accent-red-600">
+            <span class="text-sm font-bold" style="color:var(--on-surface)">영어만</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="notifyLang" value="ko" id="notifyLangKo" onchange="updateNotifyLangView()" class="accent-red-600">
+            <span class="text-sm font-bold" style="color:var(--on-surface)">한국어만</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="notifyLang" value="both" id="notifyLangBoth" onchange="updateNotifyLangView()" class="accent-red-600">
+            <span class="text-sm font-bold" style="color:var(--on-surface)">영어 + 한국어</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 이메일 내용 - 영어 -->
+      <div id="notifyEnSection" class="rounded-xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant)">
+        <h3 class="text-sm font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-envelope-fill text-blue-500"></i> Email Content (English)
+        </h3>
+        <div>
+          <label class="text-xs font-bold mb-1 block" style="color:var(--on-surface-variant)">제목 (영어)</label>
+          <input id="notifySubjectEn" type="text" placeholder="[NHR] Evaluation Reminder — {session} ends {deadline}" class="w-full border-2 rounded-lg px-3 py-2 text-sm focus:outline-none" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+        </div>
+        <div>
+          <label class="text-xs font-bold mb-1 block" style="color:var(--on-surface-variant)">본문 (영어)</label>
+          <textarea id="notifyBodyEn" rows="7" class="w-full border-2 rounded-lg px-3 py-2 text-sm focus:outline-none font-mono" style="border-color:var(--outline-variant);background:var(--surface-lowest);resize:vertical"></textarea>
+        </div>
+      </div>
+
+      <!-- 이메일 내용 - 한국어 -->
+      <div id="notifyKoSection" class="rounded-xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant);display:none">
+        <h3 class="text-sm font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-envelope-fill text-emerald-500"></i> Email Content (한국어)
+        </h3>
+        <div>
+          <label class="text-xs font-bold mb-1 block" style="color:var(--on-surface-variant)">제목 (한국어)</label>
+          <input id="notifySubjectKo" type="text" placeholder="[NHR] 평가 마감 안내 — {session} ({deadline})" class="w-full border-2 rounded-lg px-3 py-2 text-sm focus:outline-none" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+        </div>
+        <div>
+          <label class="text-xs font-bold mb-1 block" style="color:var(--on-surface-variant)">본문 (한국어)</label>
+          <textarea id="notifyBodyKo" rows="7" class="w-full border-2 rounded-lg px-3 py-2 text-sm focus:outline-none font-mono" style="border-color:var(--outline-variant);background:var(--surface-lowest);resize:vertical"></textarea>
+        </div>
+      </div>
+
+      <!-- 변수 안내 -->
+      <p class="text-xs rounded-lg px-3 py-2" style="background:var(--surface-low);color:var(--on-surface-variant)">
+        <i class="bi bi-info-circle mr-1"></i>
+        Available variables: <code class="font-mono font-bold">{name}</code> = 수신자 이름, <code class="font-mono font-bold">{session}</code> = 세션명, <code class="font-mono font-bold">{deadline}</code> = 마감일
+      </p>
+
+      <!-- 자동 발송 스케줄 -->
+      <div class="rounded-xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant)">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+            <i class="bi bi-clock-fill" style="color:var(--primary)"></i> 자동 발송 예약
+          </h3>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="notifyScheduleEnabled" onchange="toggleNotifySchedule()" class="w-4 h-4 rounded accent-red-600">
+            <span class="text-sm font-bold" style="color:var(--on-surface)">사용</span>
+          </label>
+        </div>
+        <div id="notifyScheduleBody" style="display:none" class="space-y-2">
+          <p class="text-xs" style="color:var(--outline)">마감일 기준 D-N일 전에 자동 발송합니다. 어드민 페이지에서 스케줄 체크 버튼을 누르거나 cron으로 호출 시 실행됩니다.</p>
+          <div id="notifyScheduleDaysList" class="space-y-2"></div>
+          <button onclick="addNotifyScheduleDay()" class="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border-2 transition-colors" style="border-color:var(--outline-variant);color:var(--primary)">
+            <i class="bi bi-plus-circle-fill"></i> 날짜 추가
+          </button>
+        </div>
+      </div>
+
+      <!-- 미리보기 결과 -->
+      <div id="notifyPreviewArea" style="display:none" class="rounded-xl border-2 overflow-hidden" style="border-color:var(--outline-variant)">
+        <div class="px-4 py-3 border-b flex items-center gap-2" style="background:var(--surface-low);border-color:var(--outline-variant)">
+          <i class="bi bi-eye-fill text-sm" style="color:var(--primary)"></i>
+          <span class="text-sm font-extrabold" style="color:var(--on-surface)">미리보기 결과</span>
+          <span id="notifyPreviewCount" class="text-xs px-2 py-0.5 rounded-full font-bold" style="background:var(--surface-lowest);color:var(--outline)"></span>
+        </div>
+        <div id="notifyPreviewBody" class="p-4 space-y-2 max-h-52 overflow-y-auto"></div>
+      </div>
+
+      <!-- 발송 결과 -->
+      <div id="notifySendResultArea" style="display:none" class="rounded-xl border-2 overflow-hidden">
+        <div class="px-4 py-3 border-b flex items-center gap-2" style="background:var(--surface-low);border-color:var(--outline-variant)">
+          <i class="bi bi-check2-all text-sm text-emerald-600"></i>
+          <span class="text-sm font-extrabold" style="color:var(--on-surface)">발송 결과</span>
+        </div>
+        <div id="notifySendResultBody" class="p-4 space-y-2 max-h-52 overflow-y-auto"></div>
+      </div>
+
+    </div><!-- /p-5 -->
+
+    <!-- 하단 액션 버튼 -->
+    <div class="px-5 pb-5 flex flex-wrap gap-3 justify-between items-center">
+      <button onclick="previewNotifyRecipients()" id="notifyPreviewBtn"
+        class="flex items-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl border-2 transition-colors"
+        style="border-color:var(--outline-variant);color:var(--on-surface);background:var(--surface-lowest)">
+        <i class="bi bi-eye-fill"></i> 수신자 미리보기
+      </button>
+      <div class="flex gap-3">
+        <button onclick="saveNotificationSchedule()" id="notifyScheduleSaveBtn"
+          class="btn-secondary flex items-center gap-2 px-4 py-2.5 text-sm rounded-xl">
+          <i class="bi bi-clock-fill"></i> 스케줄 저장
+        </button>
+        <button onclick="sendNotification()" id="notifySendBtn"
+          class="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm rounded-xl">
+          <i class="bi bi-send-fill"></i> 지금 발송
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── All Submissions 모달 ── -->
+<div id="submissionsModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('submissionsModal')">
+  <div class="modal-box" style="max-width:800px;">
+    <div class="modal-header">
+      <div>
+        <h2 class="text-lg font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-table" style="color:var(--primary)"></i> 전체 제출 현황
+        </h2>
+        <p class="text-sm mt-0.5" style="color:var(--on-surface-variant)">평가자별 제출 현황</p>
+      </div>
+      <button onclick="closeModal('submissionsModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg transition-colors flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="p-4 border-b flex flex-col sm:flex-row gap-3" style="border-color:var(--outline-variant)">
+      <div class="relative flex-1">
+        <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-xs" style="color:var(--outline)"></i>
+        <input type="text" id="subSearchInput" placeholder="평가자 또는 선생님 이름 검색..." oninput="filterSubmissions()"
+          class="w-full pl-8 pr-3 py-2 border-2 rounded-lg text-sm focus:outline-none"
+          style="border-color:var(--outline-variant)">
+      </div>
+      <select id="subSessionSelect" onchange="filterSubmissions()"
+        class="text-sm font-bold border-2 rounded-lg px-3 py-2 focus:outline-none min-w-[160px]"
+        style="background:var(--surface-lowest);border-color:var(--outline-variant);color:var(--on-surface-variant)">
+        <option value="">전체 세션</option>
+      </select>
+    </div>
+    <div id="submissionsBody" class="p-4 space-y-3"></div>
+  </div>
+</div>
+
+<!-- ── 수동 점수 입력 모달 ── -->
+<div id="manualInputModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('manualInputModal')">
+  <div class="modal-box" style="max-width:860px;">
+    <div class="modal-header">
+      <div>
+        <h2 class="text-lg font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-pencil-square text-orange-500"></i> 관리자 점수 입력
+        </h2>
+        <p id="manualInputSubtitle" class="text-sm mt-0.5" style="color:var(--on-surface-variant)"></p>
+      </div>
+      <button onclick="closeModal('manualInputModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="bg-amber-50 border-2 border-amber-200 rounded-xl px-4 py-3 text-xs font-bold text-amber-700 flex items-start gap-2">
+        <i class="bi bi-exclamation-triangle-fill text-amber-500 mt-0.5 flex-shrink-0"></i>
+        <p>여기 입력한 점수는 관리자가 수동으로 기록한 것입니다. 최종 보고서에 경고 문구가 표시됩니다.</p>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-extrabold block mb-1" style="color:var(--on-surface-variant)">평가자 이름 <span style="color:var(--error)">*</span></label>
+          <input id="manualRaterName" type="text" placeholder="이름 입력"
+            class="w-full border-2 rounded-lg px-3 py-2 text-sm focus:outline-none"
+            style="border-color:var(--outline-variant)">
+        </div>
+        <div>
+          <label class="text-xs font-extrabold block mb-1" style="color:var(--on-surface-variant)">사유</label>
+          <input id="manualReason" type="text" placeholder="예: 미제출로 인한 관리자 입력"
+            class="w-full border-2 rounded-lg px-3 py-2 text-sm focus:outline-none"
+            style="border-color:var(--outline-variant)">
+        </div>
+      </div>
+      <div id="manualScoreGrid" class="space-y-3"></div>
+      <div>
+        <label class="text-xs font-extrabold block mb-1" style="color:var(--on-surface-variant)">코멘트 (선택)</label>
+        <textarea id="manualComment" rows="2" placeholder="코멘트 입력 (선택사항)..."
+          class="w-full border-2 rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+          style="border-color:var(--outline-variant)"></textarea>
+      </div>
+      <div class="flex justify-end gap-3 pt-2">
+        <button onclick="closeModal('manualInputModal')" class="btn-secondary px-5 py-2.5 text-sm rounded-xl">취소</button>
+        <button onclick="submitManualInput()" class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-orange-500 hover:bg-orange-600 rounded-xl transition-colors shadow-md shadow-orange-100">
+          <i class="bi bi-check"></i> 저장
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Export Excel 확인 모달 ── -->
+<div id="exportModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('exportModal')">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <div>
+        <h2 class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-file-earmark-excel text-emerald-600"></i> Excel 내보내기
+        </h2>
+        <p class="text-xs mt-0.5" style="color:var(--on-surface-variant)">응답 데이터를 Excel 파일로 다운로드합니다</p>
+      </div>
+      <button onclick="closeModal('exportModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="rounded-xl border-2 px-4 py-3 flex items-center gap-3" style="background:var(--surface-low);border-color:var(--outline-variant)">
+        <i class="bi bi-calendar2-check text-sm" style="color:var(--primary)"></i>
+        <div>
+          <p class="text-xs font-bold" style="color:var(--on-surface-variant)">Session</p>
+          <p id="exportModalSessionLabel" class="text-sm font-extrabold" style="color:var(--on-surface)">—</p>
+        </div>
+      </div>
+      <label class="flex items-center gap-3 cursor-pointer px-4 py-3 rounded-xl border-2 transition-colors" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+        <input type="checkbox" id="exportIncludeTest" class="w-4 h-4 rounded accent-red-600">
+        <div>
+          <p class="text-sm font-bold" style="color:var(--on-surface)">테스트 응답 포함</p>
+          <p class="text-xs" style="color:var(--outline)">테스트 응답을 포함합니다 (is_test=true)</p>
+        </div>
+      </label>
+      <div class="flex justify-end gap-3 pt-1">
+        <button onclick="closeModal('exportModal')" class="btn-secondary px-5 py-2.5 text-sm">취소</button>
+        <button onclick="_doExportCsv()" class="btn-primary px-5 py-2.5 text-sm flex items-center gap-2">
+          <i class="bi bi-download"></i> 다운로드
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 커스텀 팝업 ── -->
+<div id="customPromptModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)resolveCustomPrompt(null)">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-header">
+      <h3 id="promptTitle" class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)"></h3>
+      <button onclick="resolveCustomPrompt(null)" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="p-6">
+      <p id="promptMessage" class="text-sm mb-4" style="color:var(--on-surface-variant)"></p>
+      <input id="promptInput" type="text" placeholder="여기에 입력하세요..."
+        class="w-full border-2 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none mb-5 transition-colors"
+        style="display:none;border-color:var(--outline-variant)"
+        onkeydown="if(event.key==='Enter')resolveCustomPrompt('confirm')">
+      <div class="flex gap-3 justify-end">
+        <button onclick="resolveCustomPrompt(null)" class="btn-secondary px-4 py-2.5 text-sm rounded-xl">취소</button>
+        <button onclick="resolveCustomPrompt('confirm')" id="promptConfirmBtn" class="btn-primary px-5 py-2.5 text-sm rounded-xl">확인</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/eval_v2/campus_constants.js') }}"></script>
+<script>
+const EVAL_TYPES = {{ eval_types | tojson }};
+CAMPUS_EN['Unknown'] = 'Unknown';
+const TYPE_BADGE={position:'badge-type-position',regular:'badge-type-regular',tl:'badge-type-tl',sub:'badge-type-sub',stl:'badge-type-stl'};
+</script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_sessions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_status_data.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_status_render.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_status_modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_status_actions.js') }}"></script>
+<script>
+  // Pre-select session from URL param (?session=...)
+  (function() {
+    const params = new URLSearchParams(window.location.search);
+    const preSession = params.get('session');
+    if (preSession) { currentSessionFilter = preSession; }
+  })();
+
+  // ── 첫 방문자용 세션 선택 어텐션 힌트 (펄스 링 + 화살표 라벨) ─────────
+  // 조건: localStorage 'dyb_status_session_seen' 미설정 + URL ?session 미지정.
+  // 사용자가 트리거를 클릭하거나 12초 경과 시 해제 + 'seen' 플래그 저장.
+  const statusSessionAttention = (function() {
+    let arrowEl = null;
+    let timer = null;
+    let reposHandler = null;
+    function _position() {
+      if (!arrowEl) return;
+      const tg = document.getElementById('statusSessionTrigger');
+      if (!tg) return;
+      const r = tg.getBoundingClientRect();
+      arrowEl.style.left = (r.left + r.width / 2) + 'px';
+      arrowEl.style.top  = (r.bottom + 10) + 'px';
+    }
+    function show() {
+      const tg = document.getElementById('statusSessionTrigger');
+      if (!tg) return;
+      tg.classList.add('status-sess-attn');
+      if (!arrowEl) {
+        arrowEl = document.createElement('div');
+        arrowEl.className = 'status-sess-attn-arrow';
+        arrowEl.innerHTML = '<div class="arrow-tip"></div><div class="arrow-text">세션 선택 / Select Session</div>';
+        document.body.appendChild(arrowEl);
+      }
+      _position();
+      reposHandler = () => _position();
+      window.addEventListener('resize', reposHandler);
+      window.addEventListener('scroll', reposHandler, { passive: true });
+      const sb = document.getElementById('sidebar');
+      if (sb) sb.addEventListener('transitionend', reposHandler);
+      // 사이드바 토글 등 layout 반영 지연 보정 — 600ms rAF 루프로 팔로우.
+      let _t0 = performance.now();
+      (function _follow() {
+        _position();
+        if (performance.now() - _t0 < 600 && arrowEl) requestAnimationFrame(_follow);
+      })();
+      clearTimeout(timer);
+      timer = setTimeout(hide, 12000);
+    }
+    function hide() {
+      const tg = document.getElementById('statusSessionTrigger');
+      if (tg) tg.classList.remove('status-sess-attn');
+      if (arrowEl) {
+        arrowEl.classList.add('fade-out');
+        setTimeout(() => { if (arrowEl && arrowEl.parentElement) arrowEl.parentElement.removeChild(arrowEl); arrowEl = null; }, 320);
+      }
+      if (reposHandler) {
+        window.removeEventListener('resize', reposHandler);
+        window.removeEventListener('scroll', reposHandler);
+        const sb = document.getElementById('sidebar');
+        if (sb) sb.removeEventListener('transitionend', reposHandler);
+        reposHandler = null;
+      }
+      clearTimeout(timer);
+    }
+    return { show, hide };
+  })();
+  document.addEventListener('DOMContentLoaded', function() {
+    let seen = false;
+    try { seen = localStorage.getItem('dyb_status_session_seen') === '1'; } catch (e) {}
+    // URL 에 session 이 이미 지정돼 들어왔으면 강조 불필요.
+    const hasPreSession = !!new URLSearchParams(window.location.search).get('session');
+    if (!seen && !hasPreSession) {
+      setTimeout(() => statusSessionAttention.show(), 600);
+    }
+    // 트리거 클릭 시 'seen' 플래그 저장 + 즉시 해제.
+    const tg = document.getElementById('statusSessionTrigger');
+    if (tg) {
+      tg.addEventListener('click', function() {
+        try { localStorage.setItem('dyb_status_session_seen', '1'); } catch (e) {}
+        statusSessionAttention.hide();
+      });
+    }
+  });
+</script>
+{% endblock %}

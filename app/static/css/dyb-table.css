@@ -1,0 +1,115 @@
+/* ── DYB Global Input Style ── */
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="date"],
+textarea,
+select {
+  border: 2px solid var(--outline) !important;
+  border-radius: 8px;
+  background: var(--surface-lowest);
+  color: var(--text);
+  box-shadow: 0 2px 6px rgba(0,0,0,.12), inset 0 1px 3px rgba(0,0,0,.07);
+  transition: border-color .15s, box-shadow .15s;
+  outline: none;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+input[type="tel"]:focus,
+input[type="url"]:focus,
+input[type="date"]:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 4px rgba(176,17,22,.13), 0 2px 6px rgba(0,0,0,.10) !important;
+}
+
+/* ── DYB Unified Table Style ── */
+
+/* Table base */
+.dyb-table { width: 100%; border-collapse: collapse; }
+
+.dyb-table th {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--surface-low);
+  font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-muted); white-space: nowrap;
+  border-bottom: 2px solid var(--primary);
+}
+
+.dyb-table td {
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+  color: var(--text);
+}
+.dyb-table tbody tr:last-child td { border-bottom: none; }
+
+/* Hover — primary-soft bg + brand outline + left accent bar */
+.dyb-table tbody tr:hover {
+  background: var(--primary-soft) !important;
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+.dyb-table tbody tr:hover td { color: var(--text-strong); }
+.dyb-table tbody tr:hover td:first-child { box-shadow: inset 4px 0 0 var(--primary); }
+
+/* ── Card container ── */
+.dyb-table-card {
+  background: var(--surface);
+  border-radius: 1.25rem;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+  position: relative;
+}
+.dyb-table-stripe {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 4px; background: var(--primary); opacity: .9;
+}
+.dyb-table-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 4px;
+}
+.dyb-table-header-title { font-size: .875rem; font-weight: 700; color: var(--text); }
+.dyb-table-header .bi { color: var(--primary); }
+
+/* ── Pagination ── */
+.dyb-pagination {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
+.dyb-page-size {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .75rem; color: var(--text-muted);
+}
+.dyb-page-size select {
+  font-size: .75rem; font-weight: 600; padding: 4px 22px 4px 8px !important;
+  border-radius: 6px !important; cursor: pointer;
+}
+.dyb-page-btn {
+  min-width: 32px; height: 32px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .8rem; font-weight: 700; border-radius: 3px;
+  border: 1.5px solid var(--outline-variant); background: var(--surface-lowest); color: var(--text);
+  cursor: pointer; transition: all .12s;
+}
+.dyb-page-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.dyb-page-btn.active { background: var(--strong-bg); border-color: var(--strong-bg); color: var(--strong-bg-fg); }
+.dyb-page-btn:disabled { opacity: .35; cursor: not-allowed; }
+.dyb-page-info { font-size: .75rem; color: var(--text-muted); margin-right: 8px; }
+
+/* ── 다크 모드 변형: hover 시 primary-soft (rgba alpha) + 다크 표면 위 가독 ──
+   tokens.css 가 --primary-soft 를 다크에서 rgba(176,17,22,.12) 로 매핑하므로
+   별도 override 불필요. 단, hover 시 box-shadow inset 의 brand red 는 양쪽 OK. */

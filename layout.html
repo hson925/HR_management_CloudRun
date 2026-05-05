@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DYB NHR Portal{% endblock %}</title>
+  
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            dybred: '#B01116',
+            sidebarbg: '#2d3748',
+            sidebarborder: '#1a202c',
+          }
+        }
+      }
+    }
+  </script>
+  
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  
+  <style>
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 0px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+  
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-gray-900 selection:bg-dybred selection:text-white overflow-x-hidden">
+
+  <div id="mobile-overlay" class="fixed inset-0 bg-black/50 z-20 hidden lg:hidden transition-opacity duration-300" onclick="toggleSidebar()"></div>
+
+  <aside id="sidebar" class="fixed left-0 top-0 h-screen w-64 bg-sidebarbg text-white shadow-xl z-30 flex flex-col border-r border-sidebarborder transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 z-50">
+    
+    <div id="sidebar-header" class="p-6 pb-2 transition-all duration-300">
+      <div class="flex items-center justify-between mb-8 relative">
+        
+        <a href="/" id="logo-container" class="flex items-center justify-center w-full py-4 transition-transform hover:scale-[1.02] active:scale-[0.98]">
+          <img 
+            id="logo-full"
+            src="https://lh3.googleusercontent.com/d/1tZlt5Hqgz9bTgp1odWAYW7rscMOI5TLp" 
+            alt="DYB English Logo" 
+            class="h-16 w-auto object-contain brightness-200 transition-opacity duration-200"
+          >
+          <div id="logo-mini" class="hidden w-12 h-12 bg-[#B01116] rounded-lg items-center justify-center font-bold text-xl transition-opacity duration-200">
+            DYB
+          </div>
+        </a>
+        
+        <button class="lg:hidden absolute right-0 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors" onclick="toggleSidebar()">
+          <i class="bi bi-x-lg text-xl"></i>
+        </button>
+        
+      </div>
+
+      <button onclick="toggleDesktopSidebar()" class="hidden lg:flex w-full items-center justify-center p-2 rounded-lg bg-[#3f4a5e] hover:bg-[#4a5568] transition-colors text-gray-200 mb-4">
+        <i id="toggle-icon" class="bi bi-chevron-left text-lg"></i>
+      </button>
+    </div>
+    
+    <div id="sidebar-nav" class="flex-1 px-4 overflow-y-auto overflow-x-visible custom-scrollbar transition-all duration-300">
+      <nav class="space-y-1.5 pb-8">
+        
+        <a href="/" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group {% if request.path == '/' %}bg-dybred text-white shadow-md{% else %}text-gray-200 hover:bg-[#3f4a5e] hover:text-white{% endif %}">
+          <i class="bi bi-grid-1x2-fill text-lg relative z-10 transition-all menu-icon shrink-0"></i>
+          <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center overflow-hidden whitespace-nowrap transition-all">
+            <span class="font-medium text-sm leading-tight">Dashboard</span>
+            <span class="text-[10px] opacity-70 mt-0.5 leading-none">대시보드</span>
+          </div>
+          <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+            Dashboard / 대시보드
+          </div>
+        </a>
+
+        <a href="/eval" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group {% if request.path.startswith('/eval') or request.path.startswith('/admin') or request.path.startswith('/editor') %}bg-dybred text-white shadow-md{% else %}text-gray-200 hover:bg-[#3f4a5e] hover:text-white{% endif %}">
+          <i class="bi bi-clipboard2-check-fill text-lg relative z-10 transition-all menu-icon shrink-0"></i>
+          <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center overflow-hidden whitespace-nowrap transition-all">
+            <span class="font-medium text-sm leading-tight">Evaluation</span>
+            <span class="text-[10px] opacity-70 mt-0.5 leading-none">평가</span>
+          </div>
+          <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+            Evaluation / 평가
+          </div>
+        </a>
+
+        {% if session.get('admin_code') == 'MASTER' %}
+<a href="/eval-v2/admin" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group {% if request.path.startswith('/eval-v2') %}bg-dybred text-white shadow-md{% else %}text-gray-200 hover:bg-[#3f4a5e] hover:text-white{% endif %}">
+  <i class="bi bi-clipboard2-pulse-fill text-lg relative z-10 transition-all menu-icon shrink-0"></i>
+  <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center overflow-hidden whitespace-nowrap transition-all">
+    <span class="font-medium text-sm leading-tight">Evaluation <span class="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full ml-1 font-bold">v2</span></span>
+    <span class="text-[10px] opacity-70 mt-0.5 leading-none">새 평가 시스템</span>
+  </div>
+  <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+    Evaluation v2 / 새 평가 시스템
+  </div>
+</a>
+{% endif %}
+
+        {% if session.get('admin_code') == 'MASTER' %}
+        <!-- NET 현황 드롭다운 -->
+        <div class="relative">
+          <button onclick="toggleNETMenu()" id="btn-net-menu"
+            class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group {% if request.path.startswith('/nt-') %}bg-dybred text-white shadow-md{% else %}text-gray-200 hover:bg-[#3f4a5e] hover:text-white{% endif %}">
+            <i class="bi bi-people-fill text-lg relative z-10 transition-all menu-icon shrink-0"></i>
+            <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center overflow-hidden whitespace-nowrap transition-all">
+              <span class="font-medium text-sm leading-tight">NET 현황</span>
+              <span class="text-[10px] opacity-70 mt-0.5 leading-none">NET Dashboard</span>
+            </div>
+            <i id="net-menu-chevron" class="bi bi-chevron-down text-xs menu-text transition-transform duration-200 {% if request.path.startswith('/nt-') %}rotate-180{% endif %}"></i>
+            <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+              NET 현황 / Dashboard
+            </div>
+          </button>
+          <!-- 서브메뉴 -->
+          <div id="net-submenu" class="{% if not request.path.startswith('/nt-') %}hidden{% endif %} menu-text mt-1 ml-4 space-y-1 border-l-2 border-gray-600 pl-3">
+            <a href="/nt-dashboard"
+              class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 {% if request.path == '/nt-dashboard' %}text-white bg-[#3f4a5e]{% else %}text-gray-400 hover:text-white hover:bg-[#3f4a5e]{% endif %}">
+              <i class="bi bi-bar-chart-fill text-xs"></i>
+              <span>캠퍼스 인원 현황</span>
+            </a>
+            <a href="/nt-salary"
+              class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 {% if request.path == '/nt-salary' %}text-white bg-[#3f4a5e]{% else %}text-gray-400 hover:text-white hover:bg-[#3f4a5e]{% endif %}">
+              <i class="bi bi-wallet2 text-xs"></i>
+              <span>급여 현황</span>
+            </a>
+          </div>
+        </div>
+        {% endif %}
+
+        <a href="#" onclick="handleLockedClick(event)" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group text-gray-400 cursor-pointer">
+          <div class="absolute inset-0 bg-[#2d3748]/50 mix-blend-multiply group-hover:bg-[#3f4a5e]/50 transition-colors pointer-events-none rounded-lg"></div>
+          <i class="bi bi-wallet-fill text-lg relative z-10 transition-all group-hover:text-gray-200 menu-icon shrink-0"></i>
+          <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center group-hover:text-gray-200 overflow-hidden whitespace-nowrap transition-all">
+            <span class="font-medium text-sm leading-tight">Payroll</span><span class="text-[10px] opacity-70 mt-0.5 leading-none">급여</span>
+          </div>
+          <i class="bi bi-lock-fill text-sm text-gray-400 group-hover:text-gray-300 relative z-10 locked-icon shrink-0"></i>
+          <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+            Payroll (Login Required)
+          </div>
+        </a>
+
+        <a href="#" onclick="handleLockedClick(event)" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group text-gray-400 cursor-pointer">
+          <div class="absolute inset-0 bg-[#2d3748]/50 mix-blend-multiply group-hover:bg-[#3f4a5e]/50 transition-colors pointer-events-none rounded-lg"></div>
+          <i class="bi bi-airplane-fill text-lg relative z-10 transition-all group-hover:text-gray-200 menu-icon shrink-0"></i>
+          <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center group-hover:text-gray-200 overflow-hidden whitespace-nowrap transition-all">
+            <span class="font-medium text-sm leading-tight">Vacation</span><span class="text-[10px] opacity-70 mt-0.5 leading-none">휴가</span>
+          </div>
+          <i class="bi bi-lock-fill text-sm text-gray-400 group-hover:text-gray-300 relative z-10 locked-icon shrink-0"></i>
+          <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+            Vacation (Login Required)
+          </div>
+        </a>
+
+        <a href="#" onclick="handleLockedClick(event)" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group text-gray-400 cursor-pointer">
+          <div class="absolute inset-0 bg-[#2d3748]/50 mix-blend-multiply group-hover:bg-[#3f4a5e]/50 transition-colors pointer-events-none rounded-lg"></div>
+          <i class="bi bi-file-earmark-person-fill text-lg relative z-10 transition-all group-hover:text-gray-200 menu-icon shrink-0"></i>
+          <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center group-hover:text-gray-200 overflow-hidden whitespace-nowrap transition-all">
+            <span class="font-medium text-sm leading-tight">Visa</span><span class="text-[10px] opacity-70 mt-0.5 leading-none">비자</span>
+          </div>
+          <i class="bi bi-lock-fill text-sm text-gray-400 group-hover:text-gray-300 relative z-10 locked-icon shrink-0"></i>
+          <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+            Visa (Login Required)
+          </div>
+        </a>
+
+        <a href="#" onclick="handleLockedClick(event)" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group text-gray-400 cursor-pointer">
+          <div class="absolute inset-0 bg-[#2d3748]/50 mix-blend-multiply group-hover:bg-[#3f4a5e]/50 transition-colors pointer-events-none rounded-lg"></div>
+          <i class="bi bi-calendar-week-fill text-lg relative z-10 transition-all group-hover:text-gray-200 menu-icon shrink-0"></i>
+          <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center group-hover:text-gray-200 overflow-hidden whitespace-nowrap transition-all">
+            <span class="font-medium text-sm leading-tight">Class Schedule</span><span class="text-[10px] opacity-70 mt-0.5 leading-none">수업 스케줄</span>
+          </div>
+          <i class="bi bi-lock-fill text-sm text-gray-400 group-hover:text-gray-300 relative z-10 locked-icon shrink-0"></i>
+          <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+            Class Schedule (Login Required)
+          </div>
+        </a>
+
+        <a href="#" onclick="handleLockedClick(event)" class="menu-item relative w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group text-gray-400 cursor-pointer">
+          <div class="absolute inset-0 bg-[#2d3748]/50 mix-blend-multiply group-hover:bg-[#3f4a5e]/50 transition-colors pointer-events-none rounded-lg"></div>
+          <i class="bi bi-house-fill text-lg relative z-10 transition-all group-hover:text-gray-200 menu-icon shrink-0"></i>
+          <div class="menu-text flex-1 relative z-10 flex flex-col items-start justify-center group-hover:text-gray-200 overflow-hidden whitespace-nowrap transition-all">
+            <span class="font-medium text-sm leading-tight">Housing</span><span class="text-[10px] opacity-70 mt-0.5 leading-none">하우징</span>
+          </div>
+          <i class="bi bi-lock-fill text-sm text-gray-400 group-hover:text-gray-300 relative z-10 locked-icon shrink-0"></i>
+          <div class="collapsed-tooltip hidden absolute left-full ml-3 px-2.5 py-1.5 bg-gray-900 text-xs font-medium text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap shadow-lg z-50">
+            Housing (Login Required)
+          </div>
+        </a>
+      </nav>
+    </div>
+    
+  </aside>
+
+  <div id="main-wrapper" class="lg:ml-64 flex flex-col flex-1 min-h-screen transition-all duration-300 relative">
+    
+    <header class="bg-[#2d3748] shadow-md border-b border-[#1a202c] sticky top-0 z-40">
+      <div class="px-4 md:px-8 py-4 flex items-center justify-between h-16">
+        <div class="flex items-center gap-3 md:gap-4">
+          <button class="p-2 -ml-2 text-gray-400 hover:text-white rounded-lg hover:bg-[#3f4a5e] lg:hidden transition-colors" onclick="toggleSidebar()">
+            <i class="bi bi-list text-2xl"></i>
+          </button>
+          
+          <h2 class="text-lg md:text-xl font-bold text-white tracking-tight flex items-center gap-1.5 md:gap-2">
+            NHR Portal
+            <span class="hidden sm:inline text-[10px] md:text-xs text-gray-400 font-normal ml-1 md:ml-2">통합 운영 포털</span>
+          </h2>
+        </div>
+        
+        <div class="flex items-center gap-4">
+          {% if session.get('admin_auth') %}
+            <div class="hidden sm:flex flex-col text-right mr-3">
+              <span class="text-sm font-bold text-white tracking-tight">{{ session.get('display_name') or session.get('emp_name') or session.get('admin_email', 'User') }}</span>
+              <span class="text-[10px] text-red-300 font-semibold mt-0.5 uppercase tracking-wider">{{ session.get('admin_code', 'NET') }}</span>
+            </div>
+            
+            <button onclick="window.location.href='/account'" class="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-xl border border-gray-200 hover:bg-gray-200 hover:text-dybred transition-all duration-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 group">
+              <div class="flex flex-col text-left">
+                <span class="text-sm font-semibold leading-none">Account</span>
+                <span class="text-[10px] text-gray-500 mt-0.5 leading-none group-hover:text-dybred transition-colors">계정 설정</span>
+              </div>
+              <i class="bi bi-gear text-lg text-gray-500 group-hover:text-dybred transition-colors ml-1"></i>
+            </button>
+
+            <button onclick="window.location.href='/logout'" class="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-xl border border-gray-200 hover:bg-gray-200 hover:text-dybred transition-all duration-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 group">
+              <div class="flex flex-col text-left">
+                <span class="text-sm font-semibold leading-none">Logout</span>
+                <span class="text-[10px] text-gray-500 mt-0.5 leading-none group-hover:text-dybred transition-colors">로그아웃</span>
+              </div>
+              <i class="bi bi-box-arrow-right text-lg text-gray-500 group-hover:text-dybred transition-colors ml-1"></i>
+            </button>
+
+          {% else %}
+            <button onclick="window.location.href='/login'" class="flex items-center gap-2 px-5 py-2.5 bg-[#B01116] text-white font-medium rounded-xl hover:bg-[#8f0e12] transition-all duration-200 shadow-[0_4px_10px_rgba(176,17,22,0.25)] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#B01116] group">
+              <svg class="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                <polyline points="10 17 15 12 10 7"></polyline>
+                <line x1="15" y1="12" x2="3" y2="12"></line>
+              </svg>
+              <div class="flex flex-col text-left">
+                <span class="text-sm font-semibold leading-none">Login</span>
+                <span class="text-[10px] text-red-100 opacity-90 mt-0.5 leading-none">로그인</span>
+              </div>
+            </button>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 relative bg-[#F8FAFC]">
+      <div class="p-4 sm:p-6 md:p-8 lg:p-10 relative z-10 h-full">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="bg-gray-950 text-gray-400 py-10 px-4 sm:px-8 border-t border-gray-800 flex-shrink-0 mt-auto">
+      <div class="max-w-[1400px] mx-auto flex flex-col md:flex-row justify-between gap-8 md:items-start text-center md:text-left">
+        <div class="flex flex-col gap-4">
+          <div class="flex items-center gap-4 flex-wrap justify-center md:justify-start text-sm">
+            <a href="#" class="font-semibold text-white hover:text-dybred transition-colors tracking-tight">개인정보 처리방침</a>
+            <span class="text-gray-700">|</span>
+            <a href="#" class="hover:text-white transition-colors">이용약관</a>
+            <span class="text-gray-700">|</span>
+            <a href="#" class="hover:text-white transition-colors">사이트맵</a>
+          </div>
+          <div class="text-sm tracking-tight text-gray-500">
+            <p class="mb-1">(주)DYB 교육 | 서울특별시 강남구 남부순환로 2917 청실 종합상가 3층</p>
+            <p>© 2026 DYB Education All Rights Reserved.</p>
+          </div>
+        </div>
+        <div class="relative group w-fit mx-auto md:mx-0">
+          <select class="appearance-none bg-[#2d323e] text-gray-300 text-sm rounded-xl px-6 py-3 pr-12 hover:bg-[#383e4d] hover:text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-dybred focus:border-transparent transition-all cursor-pointer shadow-sm" onchange="if(this.value) window.open(this.value, '_blank');">
+            <option value="" disabled selected hidden>Family Site</option>
+            <option value="https://net.dybedu.com/main/main.php">DYB Native Teachers</option>
+            <option value="https://www.dybedu.com/main/sub?goPage=recruit_application&menu_code=5_52">DYB 인재채용</option>
+            <option value="https://www.dybedu.com/main/">DYB 교육</option>
+            <option value="https://www.choisun.co.kr/main/?CAMP_LOCA_CD=001/">최선어학원</option>
+          </select>
+          <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-white transition-colors">
+            <i class="bi bi-chevron-down text-xs"></i>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <script>
+    let isCollapsed = false;
+
+    // 1. 모바일 오버레이 메뉴 토글
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('mobile-overlay');
+      sidebar.classList.toggle('-translate-x-full');
+      overlay.classList.toggle('hidden');
+    }
+
+    // 2. 데스크톱 사이드바 접기/펼치기 토글 로직
+    function toggleDesktopSidebar() {
+      isCollapsed = !isCollapsed;
+      
+      const sidebar = document.getElementById('sidebar');
+      const mainWrapper = document.getElementById('main-wrapper');
+      
+      const logoFull = document.getElementById('logo-full');
+      const logoMini = document.getElementById('logo-mini');
+      const toggleIcon = document.getElementById('toggle-icon');
+      const sidebarHeader = document.getElementById('sidebar-header');
+      const sidebarNav = document.getElementById('sidebar-nav');
+      
+      const menuTexts = document.querySelectorAll('.menu-text');
+      const lockedIcons = document.querySelectorAll('.locked-icon');
+      const collapsedTooltips = document.querySelectorAll('.collapsed-tooltip');
+      const menuItems = document.querySelectorAll('.menu-item');
+      const menuIcons = document.querySelectorAll('.menu-icon');
+
+      if (isCollapsed) {
+        // [접힘 상태] 
+        sidebar.classList.replace('w-64', 'w-20');
+        mainWrapper.classList.replace('lg:ml-64', 'lg:ml-20');
+
+        logoFull.classList.add('hidden');
+        logoMini.classList.remove('hidden');
+        logoMini.classList.add('flex');
+
+        toggleIcon.classList.replace('bi-chevron-left', 'bi-chevron-right');
+        sidebarHeader.classList.replace('p-6', 'p-4');
+        sidebarNav.classList.replace('px-4', 'px-2');
+
+        menuTexts.forEach(el => el.classList.add('hidden'));
+        lockedIcons.forEach(el => el.classList.add('hidden'));
+        collapsedTooltips.forEach(el => el.classList.remove('hidden'));
+        collapsedTooltips.forEach(el => el.classList.add('block'));
+
+        menuItems.forEach(el => {
+          el.classList.remove('gap-3', 'px-3');
+          el.classList.add('justify-center', 'px-0');
+        });
+        menuIcons.forEach(el => el.classList.replace('text-lg', 'text-2xl'));
+
+      } else {
+        // [펼침 상태] 
+        sidebar.classList.replace('w-20', 'w-64');
+        mainWrapper.classList.replace('lg:ml-20', 'lg:ml-64');
+
+        logoFull.classList.remove('hidden');
+        logoMini.classList.add('hidden');
+        logoMini.classList.remove('flex');
+
+        toggleIcon.classList.replace('bi-chevron-right', 'bi-chevron-left');
+        sidebarHeader.classList.replace('p-4', 'p-6');
+        sidebarNav.classList.replace('px-2', 'px-4');
+
+        menuTexts.forEach(el => el.classList.remove('hidden'));
+        lockedIcons.forEach(el => el.classList.remove('hidden'));
+        collapsedTooltips.forEach(el => el.classList.add('hidden'));
+        collapsedTooltips.forEach(el => el.classList.remove('block'));
+
+        menuItems.forEach(el => {
+          el.classList.add('gap-3', 'px-3');
+          el.classList.remove('justify-center', 'px-0');
+        });
+        menuIcons.forEach(el => el.classList.replace('text-2xl', 'text-lg'));
+      }
+    }
+
+    function handleLockedClick(e) {
+      e.preventDefault();
+      alert("This service requires login. / 로그인이 필요한 서비스입니다.");
+    }
+
+    function toggleNETMenu() {
+      const submenu = document.getElementById('net-submenu');
+      const chevron = document.getElementById('net-menu-chevron');
+      const isHidden = submenu.classList.contains('hidden');
+      submenu.classList.toggle('hidden', !isHidden);
+      chevron.classList.toggle('rotate-180', isHidden);
+    }
+  </script>
+  
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

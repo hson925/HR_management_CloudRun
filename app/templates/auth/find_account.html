@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>NHR Portal - Find Account</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}"/>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .btn-primary { transition: all 0.2s ease; }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(135, 0, 9, 0.35);
+            filter: brightness(1.08);
+        }
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0px) scale(0.98);
+            box-shadow: 0 2px 8px rgba(135, 0, 9, 0.2);
+        }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-secondary { transition: all 0.2s ease; }
+        .btn-secondary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            border-color: #870009 !important;
+            color: #870009;
+        }
+        .btn-secondary:active:not(:disabled) { transform: translateY(0px) scale(0.98); }
+        .btn-secondary:disabled { opacity: 0.7; cursor: not-allowed; }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
+    </style>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface": "#f7f9fb", "on-surface": "#191c1e", "primary": "#870009",
+                        "on-primary": "#ffffff", "primary-container": "#b01116",
+                        "surface-container-lowest": "#ffffff", "surface-container-low": "#f2f4f6",
+                        "surface-container": "#eceef0", "on-surface-variant": "#5b403d",
+                        "outline": "#906f6c", "outline-variant": "#e4beb9", "error": "#ba1a1a"
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col relative">
+
+    <a href="/login" class="absolute top-5 left-5 sm:top-8 sm:left-8 flex items-center gap-2 text-on-surface-variant/70 hover:text-primary transition-all p-2 rounded-xl hover:bg-surface-container-low group z-50 focus:outline-none">
+        <i class="bi bi-arrow-left text-[28px] group-hover:-translate-x-1 transition-transform"></i>
+        <span class="text-sm font-bold tracking-tight hidden sm:block mt-0.5">Back to Login</span>
+    </a>
+
+    <main class="flex-grow flex items-center justify-center px-4 py-6">
+        <div class="w-full max-w-md">
+            <div class="bg-surface-container-lowest rounded-xl relative overflow-hidden p-6 sm:p-8 border-2 border-outline/30 shadow-[0_35px_80px_rgba(25,28,30,0.12)]">
+                <div class="absolute top-0 left-0 w-full h-[3px] bg-primary"></div>
+
+                <div class="flex flex-col items-center mb-6">
+                    <div class="flex items-center justify-center mb-2 w-40 overflow-hidden">
+                        <img src="https://lh3.googleusercontent.com/d/1tZlt5Hqgz9bTgp1odWAYW7rscMOI5TLp" alt="DYB Logo" class="w-full h-auto object-contain">
+                    </div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-on-surface mb-1">FIND ACCOUNT</h1>
+                    <p class="text-sm text-gray-500 text-center">Enter your Employee ID to find your account.</p>
+                </div>
+
+                <div id="error-message" class="hidden mb-4 text-center">
+                    <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5 animate-pulse">
+                        <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                        <span id="error-text"></span>
+                    </p>
+                </div>
+                <div id="success-message" class="hidden mb-4 text-center">
+                    <p class="text-sm font-bold text-green-600 flex items-center justify-center gap-1.5">
+                        <i class="bi bi-check-circle-fill text-[18px]"></i>
+                        <span id="success-text"></span>
+                    </p>
+                </div>
+
+                <!-- Step 1: 사번 입력 -->
+                <div id="step-empid">
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1">Employee ID</label>
+                        <div class="relative group">
+                            <i class="bi bi-person-vcard absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                            <input id="emp-id-input" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="Enter your Employee ID" type="text" onkeydown="if(event.key==='Enter') findEmail()"/>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 mt-5">
+                        <button id="btn-find" onclick="findEmail()" class="btn-primary w-full h-[52px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center gap-2 shadow-md" type="button">
+                            <i class="bi bi-search text-[18px]"></i>
+                            <span class="text-sm">Find Email</span>
+                        </button>
+                        <button id="btn-reset" onclick="resetPassword()" class="btn-secondary w-full h-[52px] bg-surface-container-lowest border-2 border-gray-300 rounded-lg flex items-center justify-center gap-2 group" type="button">
+                            <i class="bi bi-shield-lock-fill text-[18px] text-gray-500 group-hover:text-primary transition-colors"></i>
+                            <span class="text-sm font-semibold text-gray-600 group-hover:text-primary transition-colors">Reset PW</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: 결과 표시 -->
+                <div id="step-result" class="hidden mt-4">
+                    <div class="bg-surface-container-low rounded-lg p-5 text-center border border-outline/20">
+                        <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Account found</p>
+                        <p class="text-lg font-extrabold text-on-surface" id="result-name"></p>
+                        <p class="text-sm font-mono text-primary mt-1" id="result-email"></p>
+                    </div>
+                    <button onclick="resetStep()" class="btn-secondary w-full mt-4 h-[48px] bg-transparent border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center gap-2 group" type="button">
+                        <i class="bi bi-arrow-clockwise text-gray-500 text-lg"></i>
+                        <span class="text-sm font-semibold text-gray-600">Search Again</span>
+                    </button>
+                    <button onclick="window.location.href='/login'" class="btn-primary w-full mt-2 h-[48px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                        <span class="text-sm tracking-tight">Go to Login</span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function btnLoading(btn) {
+            btn.disabled = true;
+            btn.dataset.originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat spinning text-[22px]"></i>';
+        }
+        function btnReset(btn) {
+            btn.disabled = false;
+            if (btn.dataset.originalHtml) {
+                btn.innerHTML = btn.dataset.originalHtml;
+                delete btn.dataset.originalHtml;
+            }
+        }
+
+        async function findEmail() {
+            const empId = document.getElementById('emp-id-input').value.trim();
+            if (!empId) { showError('Please enter your Employee ID.'); return; }
+
+            clearMessages();
+            const btn = document.getElementById('btn-find');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/find-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ empId })
+            });
+            const data = await response.json();
+
+            if (data.status === 'OK') {
+                document.getElementById('result-name').textContent = data.name;
+                document.getElementById('result-email').textContent = data.maskedEmail;
+                document.getElementById('step-empid').classList.add('hidden');
+                document.getElementById('step-result').classList.remove('hidden');
+            } else {
+                showError(data.message || 'Account not found.');
+            }
+            btnReset(btn);
+        }
+
+        async function resetPassword() {
+            const empId = document.getElementById('emp-id-input').value.trim();
+            if (!empId) { showError('Please enter your Employee ID.'); return; }
+
+            clearMessages();
+            const btn = document.getElementById('btn-reset');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/reset-password-by-emp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ empId })
+            });
+            const data = await response.json();
+
+            if (data.status === 'OK') {
+                showSuccess('Password reset email has been sent. Please check your inbox.');
+            } else {
+                showError(data.message || 'Failed to send reset email.');
+            }
+            btnReset(btn);
+        }
+
+        function resetStep() {
+            document.getElementById('step-result').classList.add('hidden');
+            document.getElementById('step-empid').classList.remove('hidden');
+            document.getElementById('emp-id-input').value = '';
+            clearMessages();
+        }
+
+        function showError(msg) {
+            document.getElementById('error-text').textContent = msg;
+            document.getElementById('error-message').classList.remove('hidden');
+            document.getElementById('success-message').classList.add('hidden');
+        }
+
+        function showSuccess(msg) {
+            document.getElementById('success-text').textContent = msg;
+            document.getElementById('success-message').classList.remove('hidden');
+            document.getElementById('error-message').classList.add('hidden');
+        }
+
+        function clearMessages() {
+            document.getElementById('error-message').classList.add('hidden');
+            document.getElementById('success-message').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

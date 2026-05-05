@@ -1,0 +1,276 @@
+{% extends "common/layout.html" %}
+
+{% block title %}DYB NHR | Dashboard{% endblock %}
+
+{% block extra_head %}
+<link rel="preload" as="image" href="{{ url_for('static', filename='logo-dark.png') }}">
+<style>
+  /* ── Announcement 카드 hover 테두리 (다크 모드) ──
+     아래 .border-gray-200 → var(--border) !important 가 Tailwind hover:border-[#B01116]
+     보다 specificity 높아 호버 시 brand red 테두리가 안 나타나는 문제 보정. */
+  html[data-theme="dark"] a.group.hover\:border-\[\#B01116\]:hover { border-color: var(--primary) !important; }
+  html[data-theme="dark"] a.group:hover { border-color: var(--primary) !important; }
+  html[data-theme="dark"] a.group:hover { background-color: rgba(176,17,22,.10) !important; }
+  html[data-theme="dark"] a.group:hover { box-shadow: 0 4px 18px rgba(176,17,22,.25) !important; }
+
+  /* ── Hero 로고 light/dark swap ── */
+  .hero-logo-dark { display: none; }
+  html[data-theme="dark"] .hero-logo-light { display: none; }
+  html[data-theme="dark"] .hero-logo-dark  { display: inline-block; }
+
+  /* ── Main 대시보드 — Tailwind 시맨틱 다크 override ──
+     Announcements 카드 + Quick Access 카드 + 비로그인 Login Required 모달 +
+     "Coming Soon" 오버레이의 라이트 hex 가 다크에서 부정합되는 문제 보정. */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50,
+  html[data-theme="dark"] .bg-gray-100,
+  html[data-theme="dark"] .bg-gray-200,
+  html[data-theme="dark"] .bg-gray-300    { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500  { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200 { border-color: var(--border) !important; }
+  /* gray-100/50 같은 alpha utility — 일부 Quick Access 카드의 작은 라벨 bg */
+  html[data-theme="dark"] .bg-gray-50\/50,
+  html[data-theme="dark"] .bg-gray-100\/50 { background-color: rgba(36,42,60,.50) !important; }
+
+  /* Coming Soon / Login Required blur 오버레이의 bg-white/<alpha> —
+     다크 모드에서 어두운 반투명으로 변환 (라이트 그대로 유지). */
+  html[data-theme="dark"] .bg-white\/30   { background-color: rgba(10,12,20,.50) !important; }
+  html[data-theme="dark"] .bg-white\/60   { background-color: rgba(20,24,40,.70) !important; }
+  html[data-theme="dark"] .bg-white\/90,
+  html[data-theme="dark"] .bg-white\/95   { background-color: rgba(35,40,58,.95) !important; }
+  /* Login Required CTA 카드의 흰 border 도 다크 적응 */
+  html[data-theme="dark"] .border-white,
+  html[data-theme="dark"] .border-white\/60,
+  html[data-theme="dark"] .border-white\/80 { border-color: rgba(255,255,255,.10) !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[1400px] mx-auto animate-fade-in pb-8">
+  
+  <div class="mb-8 bg-white rounded-2xl shadow-sm p-6 sm:p-10 text-gray-900 relative overflow-hidden border-2 border-[#B01116]">
+    <div class="absolute top-0 right-0 w-96 h-96 bg-[#B01116] opacity-5 blur-[80px] rounded-full mix-blend-multiply pointer-events-none"></div>
+    <div class="absolute bottom-[-20%] left-[-10%] w-96 h-96 bg-[#B01116] opacity-5 blur-[100px] rounded-full mix-blend-multiply pointer-events-none"></div>
+    
+    <div class="relative z-10 flex flex-col items-center justify-center text-center py-6">
+      <div class="mb-8 transform hover:scale-105 transition-transform duration-300">
+        <img src="https://lh3.googleusercontent.com/d/1tZlt5Hqgz9bTgp1odWAYW7rscMOI5TLp"
+             alt="DYB Logo" class="hero-logo hero-logo-light h-24 sm:h-32 object-contain">
+        <img src="{{ url_for('static', filename='logo-dark.png') }}"
+             alt="DYB Logo" class="hero-logo hero-logo-dark h-24 sm:h-32 object-contain">
+      </div>
+      
+      <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight text-gray-900">
+        Excellence in Education
+      </h1>
+      <p class="text-lg text-gray-600 max-w-2xl font-medium leading-relaxed mt-2">
+        Your integrated HR portal for DYB Education services and internal information. <br class="hidden sm:block" />
+        <span class="text-sm text-gray-400 mt-2 block">DYB 교육의 HR 서비스 및 사내 정보에 접근할 수 있는 통합 포털입니다.</span>
+      </p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+    
+    <div class="lg:col-span-5 h-[400px] lg:h-[420px] relative">
+      <div class="bg-white rounded-[1.25rem] shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-gray-100 p-6 h-full flex flex-col relative overflow-hidden">
+
+        <div class="absolute top-0 left-0 right-0 h-1 bg-[#B01116] opacity-90"></div>
+
+        {% if not session.get('admin_auth') %}
+        <!-- Non-logged-in blur overlay -->
+        <div class="absolute inset-0 z-20 rounded-[1.25rem] overflow-hidden">
+          <!-- Fake blurred content behind -->
+          <div class="absolute inset-0 px-6 py-6 flex flex-col gap-3 pointer-events-none select-none opacity-40">
+            {% for _ in range(4) %}
+            <div class="flex flex-col gap-1.5 p-4 rounded-xl border border-gray-100">
+              <div class="flex items-center gap-2">
+                <div class="h-2.5 w-16 bg-gray-300 rounded"></div>
+                <div class="h-2.5 w-8 bg-[#B01116]/30 rounded ml-auto"></div>
+              </div>
+              <div class="h-3.5 w-4/5 bg-gray-200 rounded mt-1"></div>
+              <div class="h-2.5 w-3/5 bg-gray-100 rounded"></div>
+            </div>
+            {% endfor %}
+          </div>
+          <!-- Blur + CTA layer -->
+          <div class="absolute inset-0 backdrop-blur-[6px] bg-white/60 flex flex-col items-center justify-center gap-4">
+            <div class="flex flex-col items-center gap-3 px-6 py-7 bg-white/90 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.10)] border border-white/80 max-w-[260px] text-center">
+              <div class="w-11 h-11 rounded-full bg-[#B01116]/10 flex items-center justify-center">
+                <i class="bi bi-lock-fill text-[#B01116] text-lg"></i>
+              </div>
+              <div>
+                <p class="text-[15px] font-bold text-gray-900 leading-snug">Login Required</p>
+                <p class="text-[11px] text-gray-500 mt-1">로그인 후 공지사항을 확인할 수 있습니다</p>
+              </div>
+              <a href="/login"
+                 class="mt-1 inline-flex items-center gap-1.5 px-5 py-2 bg-[#B01116] text-white text-xs font-bold rounded-lg hover:bg-[#8a0e12] transition-colors shadow-sm">
+                <i class="bi bi-box-arrow-in-right"></i> Sign In
+              </a>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-3">
+            <div class="p-2 bg-gray-50 rounded-lg border border-gray-100">
+              <i class="bi bi-bell-fill w-5 h-5 text-[#B01116] text-lg leading-none"></i>
+            </div>
+            <div class="flex flex-col">
+              <h3 class="text-[19px] font-bold tracking-tight text-[#B01116] leading-none">Announcements</h3>
+              <span class="text-[11px] font-medium text-gray-400 mt-1">사내 공지사항</span>
+            </div>
+          </div>
+          {% if session.get('admin_auth') %}
+          <a href="/announcements" class="text-sm font-medium text-gray-400 hover:text-[#B01116] flex items-center transition-colors">
+            View All <i class="bi bi-chevron-right w-4 h-4 ml-0.5"></i>
+          </a>
+          {% endif %}
+        </div>
+
+        <div class="space-y-1 flex-1 overflow-y-auto pr-2">
+          {% if announcements %}
+            {% for a in announcements %}
+            {% set is_unread = last_read_at is none or (a.created_at and a.created_at > last_read_at) %}
+            <a href="/announcements/{{ a.id }}"
+               class="group relative flex flex-col p-4 rounded-xl border-2 border-gray-200 hover:border-[#B01116] hover:shadow-lg hover:shadow-[#B01116]/10 hover:bg-[#B01116]/[0.02] hover:-translate-y-0.5 transition-all duration-200">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-xs font-semibold text-gray-500 tracking-wide">{{ a.created_at[:10] }}</span>
+                <div class="flex items-center gap-1">
+                  {% if a.pinned %}
+                  <span class="px-2 py-[2px] rounded text-[10px] font-bold bg-[#B01116]/10 text-[#B01116] uppercase tracking-wider border border-[#B01116]/20">Pinned</span>
+                  {% elif a.is_new %}
+                  <span class="px-2 py-[2px] rounded text-[10px] font-bold bg-[#B01116]/10 text-[#B01116] uppercase tracking-wider">New</span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="flex flex-col gap-0.5 pr-4">
+                <p class="text-[15px] font-semibold text-gray-800 group-hover:text-[#B01116] leading-snug truncate flex items-center gap-2 transition-colors">
+                  {% if is_unread %}<span class="w-2 h-2 rounded-full bg-[#B01116] shrink-0" title="Unread"></span>{% endif %}
+                  <span class="truncate">{{ a.title }}</span>
+                </p>
+                <p class="text-[11px] text-gray-400 truncate">{{ a.preview }}</p>
+              </div>
+            </a>
+            {% endfor %}
+          {% elif session.get('admin_auth') %}
+            <div class="h-full flex items-center justify-center text-gray-400 text-sm py-10">
+              No announcements yet.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="lg:col-span-7 h-auto min-h-[450px] lg:h-[420px] relative group/widget">
+      <div class="bg-white rounded-[1.25rem] shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-gray-100 p-6 h-full flex flex-col relative overflow-hidden">
+        
+        <div class="absolute inset-0 z-50 bg-white/30 backdrop-blur-[2px] flex flex-col items-center justify-center cursor-not-allowed transition-all duration-500 group-hover/widget:bg-white/10 group-hover/widget:backdrop-blur-[1px]">
+          <div class="px-8 py-6 bg-white/95 shadow-[0_15px_40px_rgba(0,0,0,0.12)] border border-white/60 rounded-3xl flex flex-col items-center transform transition-transform hover:scale-105">
+            <i class="bi bi-cone-striped text-3xl text-[#B01116] leading-none mb-3"></i>
+            <span class="text-xl font-extrabold text-gray-900 tracking-tight">준비중</span>
+            <span class="text-[10px] font-bold text-gray-500 mt-1 uppercase tracking-widest">Coming Soon</span>
+          </div>
+        </div>
+
+        <div class="absolute top-0 left-0 right-0 h-1 bg-[#B01116] opacity-90"></div>
+        
+        <div class="flex items-center gap-3 mb-6">
+          <div class="p-2 bg-gray-50 rounded-lg border border-gray-100 shadow-sm">
+            <svg class="w-5 h-5 text-[#B01116]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+              <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+              <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+              <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+            </svg>
+          </div>
+          <div class="flex flex-col">
+            <h3 class="text-[19px] font-bold tracking-tight text-[#B01116] leading-none">Quick Access</h3>
+            <span class="text-[11px] font-medium text-gray-400 mt-1">퀵 서비스</span>
+          </div>
+        </div>
+        
+        <div class="flex flex-col flex-1 mt-2 overflow-hidden pr-2 -mr-2">
+          <div class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            
+            <div class="relative flex flex-col items-start p-5 rounded-[1rem] border border-gray-100 bg-gray-50/50 overflow-hidden text-left pointer-events-none">
+              <div class="w-10 h-10 rounded-[10px] flex items-center justify-center mb-3.5 bg-white shadow-sm border border-gray-100 text-[#B01116]">
+                <i class="bi bi-calendar3 text-lg leading-none"></i>
+              </div>
+              <div class="flex flex-col items-start w-full gap-0.5">
+                <span class="text-[14px] font-bold text-gray-800 tracking-tight leading-snug">Schedule</span>
+                <span class="text-[11px] text-gray-400 font-medium">오늘의 수업 스케줄</span>
+              </div>
+              <span class="text-[10px] text-gray-400 mt-2 text-left font-normal tracking-wide bg-gray-100/50 px-2 py-1 rounded w-full">Today's schedule</span>
+            </div>
+
+            <div class="relative flex flex-col items-start p-5 rounded-[1rem] border border-gray-100 bg-gray-50/50 overflow-hidden text-left pointer-events-none">
+              <div class="w-10 h-10 rounded-[10px] flex items-center justify-center mb-3.5 bg-white shadow-sm border border-gray-100 text-[#B01116]">
+                <i class="bi bi-file-earmark-text text-lg leading-none"></i>
+              </div>
+              <div class="flex flex-col items-start w-full gap-0.5">
+                <span class="text-[14px] font-bold text-gray-800 tracking-tight leading-snug">Resources</span>
+                <span class="text-[11px] text-gray-400 font-medium">공용 자료실</span>
+              </div>
+              <span class="text-[10px] text-gray-400 mt-2 text-left font-normal tracking-wide bg-gray-100/50 px-2 py-1 rounded w-full">Forms & docs</span>
+            </div>
+
+            <div class="relative flex flex-col items-start p-5 rounded-[1rem] border border-gray-100 bg-gray-50/50 overflow-hidden text-left pointer-events-none">
+              <div class="w-10 h-10 rounded-[10px] flex items-center justify-center mb-3.5 bg-white shadow-sm border border-gray-100 text-[#B01116]">
+                <i class="bi bi-map text-lg leading-none"></i>
+              </div>
+              <div class="flex flex-col items-start w-full gap-0.5">
+                <span class="text-[14px] font-bold text-gray-800 tracking-tight leading-snug">Campus Map</span>
+                <span class="text-[11px] text-gray-400 font-medium">캠퍼스 지도</span>
+              </div>
+              <span class="text-[10px] text-gray-400 mt-2 text-left font-normal tracking-wide bg-gray-100/50 px-2 py-1 rounded w-full">HQ & branches</span>
+            </div>
+
+            <div class="relative flex flex-col items-start p-5 rounded-[1rem] border border-gray-100 bg-gray-50/50 overflow-hidden text-left pointer-events-none">
+              <div class="w-10 h-10 rounded-[10px] flex items-center justify-center mb-3.5 bg-white shadow-sm border border-gray-100 text-[#B01116]">
+                <i class="bi bi-telephone text-lg leading-none"></i>
+              </div>
+              <div class="flex flex-col items-start w-full gap-0.5">
+                <span class="text-[14px] font-bold text-gray-800 tracking-tight leading-snug">Directory</span>
+                <span class="text-[11px] text-gray-400 font-medium">전화번호부</span>
+              </div>
+              <span class="text-[10px] text-gray-400 mt-2 text-left font-normal tracking-wide bg-gray-100/50 px-2 py-1 rounded w-full">Contact info</span>
+            </div>
+
+            <div class="relative flex flex-col items-start p-5 rounded-[1rem] border border-gray-100 bg-gray-50/50 overflow-hidden text-left pointer-events-none">
+              <div class="w-10 h-10 rounded-[10px] flex items-center justify-center mb-3.5 bg-white shadow-sm border border-gray-100 text-[#B01116]">
+                <i class="bi bi-cup-hot text-lg leading-none"></i>
+              </div>
+              <div class="flex flex-col items-start w-full gap-0.5">
+                <span class="text-[14px] font-bold text-gray-800 tracking-tight leading-snug">Cafeteria</span>
+                <span class="text-[11px] text-gray-400 font-medium">사내 식단표</span>
+              </div>
+              <span class="text-[10px] text-gray-400 mt-2 text-left font-normal tracking-wide bg-gray-100/50 px-2 py-1 rounded w-full">Weekly menu</span>
+            </div>
+
+            <div class="relative flex flex-col items-start p-5 rounded-[1rem] border border-gray-100 bg-gray-50/50 overflow-hidden text-left pointer-events-none">
+              <div class="w-10 h-10 rounded-[10px] flex items-center justify-center mb-3.5 bg-white shadow-sm border border-gray-100 text-[#B01116]">
+                <i class="bi bi-book text-lg leading-none"></i>
+              </div>
+              <div class="flex flex-col items-start w-full gap-0.5">
+                <span class="text-[14px] font-bold text-gray-800 tracking-tight leading-snug">Manual</span>
+                <span class="text-[11px] text-gray-400 font-medium">교육 매뉴얼</span>
+              </div>
+              <span class="text-[10px] text-gray-400 mt-2 text-left font-normal tracking-wide bg-gray-100/50 px-2 py-1 rounded w-full">For instructors</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

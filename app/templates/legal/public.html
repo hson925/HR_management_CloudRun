@@ -1,0 +1,342 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | {{ meta.title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root { --primary-dark: #870009; }
+
+  /* ── Layout ── */
+  .legal-wrap {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  /* ── Article body ── */
+  .legal-body { min-width: 0; }
+
+  .article-section {
+    background: var(--surface); border: 1px solid var(--outline-variant); border-radius: 12px;
+    padding: 28px 32px; margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    scroll-margin-top: 96px;
+  }
+  .article-num {
+    display: inline-block; font-size: .68rem; font-weight: 800;
+    letter-spacing: .06em; text-transform: uppercase;
+    background: var(--primary-soft); color: var(--primary-dark); padding: 3px 9px;
+    border-radius: 9999px; margin-bottom: 8px;
+  }
+  .article-title {
+    font-size: 1.05rem; font-weight: 800; color: var(--text-strong); margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 1.5px solid var(--border-soft);
+  }
+  .article-content {
+    font-size: .875rem; color: var(--text); line-height: 1.8;
+  }
+  .article-content p   { margin-bottom: .75em; }
+  .article-content br  { display: block; }
+  .article-content ul,
+  .article-content ol  { padding-left: 1.4em; margin-bottom: .75em; }
+  .article-content li  { margin-bottom: .3em; }
+  .article-content strong { color: var(--text-strong); font-weight: 700; }
+  .article-content em  { font-style: italic; }
+  .article-content u   { text-decoration: underline; }
+  .article-content s   { text-decoration: line-through; color: var(--text-muted); }
+  .article-content h1  { font-size: 1.1rem; font-weight: 800; color: var(--text-strong); margin: 1.2em 0 .5em; }
+  .article-content h2  { font-size: .95rem; font-weight: 700; color: var(--text-strong); margin: 1em 0 .4em; }
+  .article-content h3  { font-size: .875rem; font-weight: 700; color: var(--text); margin: .8em 0 .3em; }
+  .article-content blockquote {
+    border-left: 3px solid var(--primary-dark); margin: .75em 0;
+    padding: .4em 1em; background: var(--primary-soft);
+    color: var(--on-surface-variant); border-radius: 0 6px 6px 0;
+  }
+  /* Quill alignment classes */
+  .article-content .ql-align-center  { text-align: center; }
+  .article-content .ql-align-right   { text-align: right; }
+  .article-content .ql-align-justify { text-align: justify; }
+  /* Quill indent classes */
+  .article-content .ql-indent-1 { padding-left: 2em; }
+  .article-content .ql-indent-2 { padding-left: 4em; }
+  .article-content .ql-indent-3 { padding-left: 6em; }
+  .article-content .ql-indent-4 { padding-left: 8em; }
+  /* Inline color/size styles pass through via | safe — no extra CSS needed */
+
+  /* ── Chapter header ── */
+  .chapter-header {
+    margin: 32px 0 16px;
+    padding: 18px 24px;
+    background: linear-gradient(135deg, var(--primary-dark) 0%, #6b0007 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 14px rgba(135,0,9,.18);
+    display: flex; align-items: center; gap: 14px;
+    color: #fff;
+  }
+  .chapter-header:first-child { margin-top: 0; }
+  .chapter-num {
+    font-size: .78rem; font-weight: 800; letter-spacing: .08em;
+    padding: 5px 12px; border-radius: 9999px;
+    background: rgba(255,255,255,.18);
+    border: 1px solid rgba(255,255,255,.35);
+    white-space: nowrap;
+  }
+  .chapter-title {
+    font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em;
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    text-align: center; padding: 80px 20px; color: var(--text-dim);
+  }
+
+  /* ── Print-only header (hidden on screen) ── */
+  .print-only { display: none; }
+
+  /* ── Print rules — 서식 유지 + 브라우저 대화상자 덮어쓰기 방어 ──
+     근본 원리:
+     - @page margin 은 사용자의 프린트 대화상자 "여백" 설정(None/Minimum/
+       Custom) 에 의해 덮어써짐 → 신뢰 불가.
+     - 반면 .legal-page 의 padding 은 content box 내부 값이라 대화상자로
+       덮어쓰이지 않음 → 좌우는 여기서 책임진다.
+     - @page 는 "각 페이지 상/하 반복 공백" 을 주는 용도로만 (덮어쓰이면 그건
+       사용자 선택). 좌우는 @page 를 거의 0 으로 두고 content padding 이 지배. */
+  @media print {
+    @page { size: A4; margin: 15mm 0; }
+
+    /* 레이아웃 크롬 제거 + 래퍼 margin/padding 초기화 */
+    html, body {
+      margin: 0 !important; padding: 0 !important;
+      background: #fff !important;
+      display: block !important;
+      overflow: visible !important;
+    }
+    #sidebar, #mobile-overlay, header, footer, .no-print { display: none !important; }
+    #main-wrapper { margin: 0 !important; padding: 0 !important; }
+    main { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+    main > div { padding: 0 !important; margin: 0 !important; }
+
+    /* 배경/색상/그라데이션이 인쇄 시 빠지는 기본 동작 억제 */
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    /* Content-level safety inset — 이것이 좌우 안전 여백의 핵심.
+       20mm 를 안쪽 padding 으로 둬서 @page margin 이 0 으로 덮어써도
+       내용이 종이 가장자리에 절대 닿지 않는다.
+       상단 8mm 는 첫 페이지에서 print-doc-header 가 @page margin 과 합쳐져
+       여유 있게 시작하도록. */
+    .legal-page {
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 8mm 20mm 0 20mm !important;
+      box-sizing: border-box !important;
+    }
+
+    .legal-wrap { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+
+    /* 장 제목 그라데이션 박스 — 박스 자체는 full-bleed 유지 (legal-page padding
+       이 좌우 safety 담당). 상하 breathing + page-break 제어. */
+    .chapter-header {
+      page-break-after: avoid; break-after: avoid;
+      box-shadow: none !important;
+      margin: 8mm 0 5mm !important;
+      padding: 14px 20px !important;
+    }
+    .chapter-header:first-child { margin-top: 0 !important; }
+
+    .article-section {
+      page-break-inside: avoid; break-inside: avoid;
+      margin: 0 0 10px !important;
+      box-shadow: none !important;
+    }
+
+    /* Print-only 문서 헤더 */
+    .print-only { display: block !important; }
+    .print-doc-header {
+      padding-bottom: 10px; margin: 0 0 14px;
+      border-bottom: 2px solid #111;
+    }
+    .print-doc-header h1 {
+      margin: 0; font-size: 16pt; font-weight: 800; color: #111;
+    }
+    .print-doc-header .print-meta {
+      margin-top: 4px; font-size: 10pt; color: #333;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="py-2 max-w-screen-xl mx-auto legal-page">
+
+  <!-- Print-only document header (화면에서는 숨김) -->
+  <div class="print-only print-doc-header">
+    <h1>
+      <span data-lang-ko>{{ meta.title }}</span>
+      <span data-lang-en style="display:none;">{{ meta.en }}</span>
+    </h1>
+    <div class="print-meta">
+      {% if doc.effective_date %}
+        <span data-lang-ko>시행일</span><span data-lang-en style="display:none;">Effective</span>:
+        {{ doc.effective_date }}
+      {% endif %}
+      {% if doc.updated_at %}
+        {% if doc.effective_date %} · {% endif %}
+        <span data-lang-ko>최종 수정</span><span data-lang-en style="display:none;">Updated</span>:
+        {{ doc.updated_at[:10] }}
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Header banner -->
+  <div class="relative overflow-hidden rounded-2xl bg-white mb-7 no-print"
+       style="border:1px solid #f4dcdf;box-shadow:0 10px 30px rgba(135,0,9,.09);">
+    <!-- Left accent stripe -->
+    <div class="absolute top-0 left-0 bottom-0 pointer-events-none"
+         style="width:6px;background:linear-gradient(180deg,var(--primary-dark) 0%,#b01116 100%);"></div>
+    <!-- Top-right red glow -->
+    <div class="absolute pointer-events-none"
+         style="top:-80px;right:-80px;width:280px;height:280px;border-radius:9999px;background:radial-gradient(closest-side,rgba(176,17,22,.16),transparent 70%);"></div>
+    <!-- Dotted pattern (subtle) -->
+    <div class="absolute pointer-events-none hidden sm:block"
+         style="top:0;left:40%;right:220px;bottom:0;opacity:.05;background-image:radial-gradient(var(--primary-dark) 1.2px,transparent 1.2px);background-size:14px 14px;mask-image:linear-gradient(90deg,transparent 0%,#000 30%,#000 70%,transparent 100%);"></div>
+
+    <div class="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 pl-8">
+      <div class="flex items-center gap-4">
+        <!-- Red gradient icon tile -->
+        <div class="flex items-center justify-center flex-shrink-0"
+             style="width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,var(--primary-dark) 0%,#b01116 100%);box-shadow:0 8px 20px rgba(135,0,9,.28),inset 0 1px 0 rgba(255,255,255,.15);">
+          <i class="bi bi-file-earmark-text-fill text-white" style="font-size:26px;line-height:1;"></i>
+        </div>
+        <div>
+          <h1 class="font-extrabold tracking-tight leading-tight"
+              style="font-size:22px;color:var(--text-strong);">
+            <span data-lang-ko>{{ meta.title }}</span>
+            <span data-lang-en style="display:none;">{{ meta.en }}</span>
+          </h1>
+          <p class="text-xs mt-1" style="color:var(--text-dim);letter-spacing:.01em;">
+            <span data-lang-ko>{{ meta.en }}</span>
+            <span data-lang-en style="display:none;">{{ meta.title }}</span>
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- 언어 토글 -->
+        <div id="legalLangToggle" style="display:inline-flex;border:1.5px solid var(--outline-variant);border-radius:6px;overflow:hidden;">
+          <button type="button" data-lang-btn="ko" onclick="setLegalLang('ko')"
+                  style="padding:5px 12px;font-size:11px;font-weight:700;background:var(--primary-dark);color:#fff;border:none;cursor:pointer;">
+            한국어
+          </button>
+          <button type="button" data-lang-btn="en" onclick="setLegalLang('en')"
+                  style="padding:5px 12px;font-size:11px;font-weight:700;background:#fff;color:var(--text-muted);border:none;border-left:1.5px solid var(--outline-variant);cursor:pointer;">
+            English
+          </button>
+        </div>
+        <!-- 인쇄 -->
+        <button type="button" onclick="window.print()" title="Print&#10;인쇄"
+                style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:11px;font-weight:700;background:#fff;color:var(--on-surface-variant);border:1.5px solid var(--outline-variant);border-radius:6px;cursor:pointer;">
+          <i class="bi bi-printer"></i>
+          <span data-lang-ko>인쇄</span>
+          <span data-lang-en style="display:none;">Print</span>
+        </button>
+        {% if doc.effective_date or doc.updated_at %}
+        <div class="text-right text-xs space-y-0.5"
+             style="color:var(--text-muted);padding-left:12px;border-left:1.5px dashed #f4dcdf;">
+          {% if doc.effective_date %}
+          <p><span data-lang-ko>시행일</span><span data-lang-en style="display:none;">Effective</span>: <span class="font-semibold" style="color:var(--primary-dark);">{{ doc.effective_date }}</span></p>
+          {% endif %}
+          {% if doc.updated_at %}
+          <p><span data-lang-ko>최종 수정</span><span data-lang-en style="display:none;">Updated</span>: <span class="font-semibold" style="color:var(--text);">{{ doc.updated_at[:10] }}</span></p>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if doc.articles %}
+  <div class="legal-wrap">
+    {% set ns = namespace(prev_chapter=0) %}
+    {% for article in doc.articles %}
+      {% if article.chapter_number and article.chapter_number != ns.prev_chapter %}
+      <div class="chapter-header">
+        <span class="chapter-num"><span data-lang-ko>제{{ article.chapter_number }}장</span><span data-lang-en style="display:none;">Chapter {{ article.chapter_number }}</span></span>
+        {% if article.chapter_title or article.chapter_title_en %}
+          <span class="chapter-title">
+            <span data-lang-ko>{{ article.chapter_title }}</span>
+            <span data-lang-en style="display:none;">{{ article.chapter_title_en or article.chapter_title }}</span>
+          </span>
+          {# 영어 모드에서 chapter_title_en 이 비어 한국어로 폴백된 경우만 배지 표시 #}
+          {% if not article.chapter_title_en and article.chapter_title %}
+          <span data-lang-en style="display:none;margin-left:8px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;letter-spacing:.05em;" title="No English translation — showing Korean">
+            <i class="bi bi-translate mr-1"></i>KO
+          </span>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% set ns.prev_chapter = article.chapter_number %}
+      {% endif %}
+      <div class="article-section" id="article-{{ article.number }}">
+        <div class="article-num"><span data-lang-ko>제{{ article.number }}조</span><span data-lang-en style="display:none;">Article {{ article.number }}</span></div>
+        <div class="article-title">
+          <span data-lang-ko>{{ article.title }}</span>
+          <span data-lang-en style="display:none;">{{ article.title_en or article.title }}</span>
+        </div>
+        <div class="article-content">
+          <div data-lang-ko>{{ article.content | safe }}</div>
+          <div data-lang-en style="display:none;">
+            {% if article.content_en %}
+              {{ article.content_en | safe }}
+            {% else %}
+              <div style="padding:12px 16px;margin:8px 0;background:#fefce8;border:1px solid #fde68a;border-radius:6px;font-size:12px;color:#92400e;">
+                <i class="bi bi-translate mr-1"></i>English translation not available yet. Showing Korean version below.
+              </div>
+              {{ article.content | safe }}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-file-earmark text-5xl block mb-4 text-gray-300"></i>
+    <p class="font-semibold text-gray-400" data-lang-ko>아직 내용이 등록되지 않았습니다.</p>
+    <p class="font-semibold text-gray-400" data-lang-en style="display:none;">No content has been published yet.</p>
+  </div>
+  {% endif %}
+
+</div>
+<script>
+(function () {
+  const STORAGE_KEY = 'dyb_legal_lang';
+
+  function _detectDefault() {
+    // localStorage 우선 → navigator.language 기반 자동 감지
+    const saved = (localStorage.getItem(STORAGE_KEY) || '').toLowerCase();
+    if (saved === 'ko' || saved === 'en') return saved;
+    const nav = (navigator.language || navigator.userLanguage || '').toLowerCase();
+    return nav.startsWith('ko') ? 'ko' : 'en';
+  }
+
+  window.setLegalLang = function (lang) {
+    if (lang !== 'ko' && lang !== 'en') return;
+    try { localStorage.setItem(STORAGE_KEY, lang); } catch (_) {}
+    // 언어별 콘텐츠 요소만 display toggle — 토글 버튼 자체(data-lang-btn) 는
+    // 양쪽 언어 버튼이 동시에 보여야 하므로 제외. 현재는 data-lang-* 속성이
+    // 버튼에 없지만, 추후 버튼에 다국어 라벨이 추가되어도 충돌하지 않도록 가드.
+    document.querySelectorAll('[data-lang-ko]:not([data-lang-btn])').forEach(el => {
+      el.style.display = lang === 'ko' ? '' : 'none';
+    });
+    document.querySelectorAll('[data-lang-en]:not([data-lang-btn])').forEach(el => {
+      el.style.display = lang === 'en' ? '' : 'none';
+    });
+    // 버튼 활성 표시
+    document.querySelectorAll('[data-lang-btn]').forEach(btn => {
+      const active = btn.getAttribute('data-lang-btn') === lang;
+      btn.style.background = active ? 'var(--primary-dark)' : 'var(--surface)';
+      btn.style.color = active ? '#fff' : 'var(--text-muted)';
+    });
+  };
+
+  document.addEventListener('DOMContentLoaded', () => setLegalLang(_detectDefault()));
+})();
+</script>
+{% endblock %}

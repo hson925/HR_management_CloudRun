@@ -1,0 +1,1105 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | System Logs{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root { --primary-dark: #870009; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex; align-items: center;
+    font-size: .7rem; font-weight: 700; letter-spacing: .03em;
+    padding: 2px 8px; border-radius: 9999px; white-space: nowrap;
+  }
+  .badge-auth     { background: #dbeafe; color: #1d4ed8; }
+  .badge-user     { background: #dcfce7; color: #15803d; }
+  .badge-session  { background: #fef9c3; color: #a16207; }
+  .badge-response { background: #ede9fe; color: #6d28d9; }
+  .badge-email    { background: #ffedd5; color: #c2410c; }
+  .badge-draft    { background: #fce7f3; color: #be185d; }
+  .badge-general  { background: #f3f4f6; color: #6b7280; }
+
+  /* ── Filter tabs ── */
+  .filter-tab {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 14px; border-radius: 6px; font-size: .8rem; font-weight: 600;
+    border: 1.5px solid var(--outline); cursor: pointer; transition: all .15s;
+    background: var(--surface-lowest); color: var(--on-surface-variant);
+    box-shadow: 0 1px 4px rgba(0,0,0,.10);
+  }
+  .filter-tab:hover { border-color: var(--primary-dark); color: var(--primary-dark); background: var(--primary-soft); }
+  .filter-tab.active { background: var(--primary-dark); color: #fff; border-color: var(--primary-dark); box-shadow: 0 2px 8px rgba(135,0,9,.25); }
+
+  /* ── Table ── */
+  .details-toggle {
+    cursor: pointer; color: #6366f1; font-size: .75rem; font-weight: 600;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .details-pre {
+    background: var(--surface-low); border: 1px solid var(--outline-variant); border-radius: 4px;
+    padding: 8px 10px; font-size: .72rem; line-height: 1.5; margin-top: 4px;
+    white-space: pre-wrap; word-break: break-all; color: var(--text); display: none;
+  }
+  table { border-collapse: collapse; width: 100%; }
+  th {
+    background: var(--surface-low); font-size: .75rem; font-weight: 700; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .05em;
+    padding: 10px 12px; text-align: left;
+    border-bottom: 2px solid var(--primary-dark);
+    white-space: nowrap; position: sticky; top: 0; z-index: 10;
+  }
+  td {
+    padding: 10px 12px; font-size: .82rem; color: var(--text);
+    border-bottom: 1px solid var(--border-soft); vertical-align: top;
+    transition: background .1s;
+  }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover {
+    background: var(--primary-soft) !important;
+    outline: 2px solid var(--primary);
+    outline-offset: -1px;
+  }
+  tbody tr:hover td { color: var(--text-strong); }
+  tbody tr:hover td:first-child { box-shadow: inset 4px 0 0 var(--primary); }
+  tr.search-hidden { display: none; }
+
+  /* ── Buttons ── */
+  .btn-load-more {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 20px; border-radius: 8px; font-size: .82rem; font-weight: 600;
+    background: var(--surface-lowest); color: var(--text); border: 1.5px solid var(--outline);
+    cursor: pointer; transition: all .15s;
+    box-shadow: 0 1px 4px rgba(0,0,0,.10);
+  }
+  .btn-load-more:hover:not(:disabled) { border-color: var(--primary-dark); color: var(--primary-dark); background: var(--primary-soft); }
+  .btn-load-more:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── Search ── */
+  .search-wrap { position: relative; display: flex; align-items: center; }
+  .search-wrap input {
+    padding: 7px 32px 7px 34px; border-radius: 8px; font-size: .82rem;
+    border: 1.5px solid var(--outline); outline: none; width: 240px;
+    transition: border-color .15s, box-shadow .15s; background: var(--surface-lowest);
+    box-shadow: 0 1px 4px rgba(0,0,0,.10);
+  }
+  .search-wrap input:focus { border-color: var(--primary-dark); box-shadow: 0 0 0 3px rgba(135,0,9,.08); }
+  .search-wrap .search-icon { position: absolute; left: 10px; color: var(--text-dim); font-size: .85rem; pointer-events: none; }
+  .search-wrap .clear-btn {
+    position: absolute; right: 8px; color: var(--text-dim); font-size: .85rem;
+    cursor: pointer; display: none; background: none; border: none; padding: 0;
+  }
+  .search-wrap .clear-btn:hover { color: var(--text); }
+
+  /* ── Custom Datepicker ── */
+  .dp-wrap { position: relative; display: inline-block; }
+
+  .dp-input-box {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 12px; border-radius: 8px; font-size: .82rem; font-weight: 500;
+    border: 1.5px solid var(--outline); background: var(--surface-lowest); color: var(--text);
+    cursor: pointer; transition: border-color .15s, box-shadow .15s;
+    user-select: none; min-width: 150px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.10);
+  }
+  .dp-input-box:hover { border-color: var(--text-muted); }
+  .dp-input-box.open  { border-color: var(--primary-dark); box-shadow: 0 0 0 3px rgba(135,0,9,.10); }
+  .dp-input-box .dp-icon  { color: var(--primary-dark); font-size: .85rem; flex-shrink: 0; }
+  .dp-input-box .dp-label { flex: 1; color: var(--text); }
+  .dp-input-box .dp-label.placeholder { color: var(--text-dim); }
+  .dp-input-box .dp-caret { font-size: .65rem; color: var(--text-dim); transition: transform .2s; flex-shrink: 0; }
+  .dp-input-box.open .dp-caret { transform: rotate(180deg); }
+
+  .dp-popup {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+    background: var(--surface-lowest); border: 2px solid var(--primary-dark); border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(135,0,9,.15), 0 4px 10px rgba(135,0,9,.10);
+    padding: 14px; width: 264px;
+    animation: dpFadeIn .12s ease;
+  }
+  @keyframes dpFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Calendar view */
+  .dp-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+  }
+  .dp-nav-btn {
+    width: 28px; height: 28px; border-radius: 6px; border: none; background: none;
+    cursor: pointer; color: var(--text-muted); font-size: .8rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s; flex-shrink: 0;
+  }
+  .dp-nav-btn:hover { background: var(--primary-soft); color: var(--primary-dark); }
+
+  .dp-month-label {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: .85rem; font-weight: 700; color: var(--text-strong);
+    cursor: pointer; padding: 2px 6px; border-radius: 6px;
+    transition: background .1s; user-select: none;
+  }
+  .dp-month-label:hover { background: var(--primary-soft); color: var(--primary-dark); }
+  .dp-month-label .dp-sel-caret { font-size: .6rem; color: var(--text-dim); transition: transform .2s; }
+  .dp-month-label.sel-open .dp-sel-caret { transform: rotate(180deg); color: var(--primary-dark); }
+
+  .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .dp-weekday {
+    text-align: center; font-size: .68rem; font-weight: 700;
+    color: var(--text-dim); padding: 4px 0; letter-spacing: .03em;
+  }
+  .dp-day {
+    position: relative; text-align: center; font-size: .78rem;
+    padding: 5px 2px; border-radius: 6px; cursor: pointer;
+    color: var(--text); transition: background .1s, color .1s; line-height: 1.6;
+  }
+  .dp-day:hover:not(.dp-empty):not(.dp-selected) { background: var(--surface-low-hover); }
+  .dp-day.dp-empty { cursor: default; }
+  .dp-day.dp-today:not(.dp-selected)::after {
+    content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+    width: 4px; height: 4px; border-radius: 50%; background: var(--primary-dark);
+  }
+  .dp-day.dp-in-range:not(.dp-selected) { background: #fef2f2; color: #7f1d1d; border-radius: 0; }
+  .dp-day.dp-range-start.dp-in-range { border-radius: 6px 0 0 6px; }
+  .dp-day.dp-range-end.dp-in-range   { border-radius: 0 6px 6px 0; }
+  .dp-day.dp-selected { background: var(--primary-dark); color: #fff; border-radius: 6px; font-weight: 700; }
+  .dp-day.dp-selected:hover { background: #6b0007; }
+
+  .dp-footer {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-soft);
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+  }
+  .dp-today-btn {
+    padding: 5px 10px; border-radius: 6px; font-size: .73rem; font-weight: 700;
+    border: 1.5px solid var(--primary-dark); background: var(--primary-soft); color: var(--primary-dark);
+    cursor: pointer; transition: all .12s; display: flex; align-items: center; gap: 4px;
+  }
+  .dp-today-btn:hover { background: var(--primary-dark); color: #fff; }
+  .dp-clear-btn {
+    padding: 5px 12px; border-radius: 6px; font-size: .75rem; font-weight: 600;
+    border: 1px solid var(--outline); background: var(--surface-lowest); color: var(--on-surface-variant);
+    cursor: pointer; transition: all .12s;
+  }
+  .dp-clear-btn:hover { border-color: var(--primary-dark); color: var(--primary-dark); }
+
+  /* Selector view (year / month picker) */
+  .dp-sel-view { display: none; }
+  .dp-sel-view.active { display: block; }
+
+  .dp-sel-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+  .dp-sel-title { font-size: .78rem; font-weight: 700; color: var(--on-surface-variant); }
+
+  .dp-year-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 10px;
+  }
+  .dp-year-cell {
+    padding: 7px 2px; text-align: center; font-size: .78rem; font-weight: 500;
+    border-radius: 6px; cursor: pointer; color: var(--text); transition: background .1s, color .1s;
+  }
+  .dp-year-cell:hover { background: var(--surface-low-hover); }
+  .dp-year-cell.dp-this-year { color: var(--primary-dark); font-weight: 700; }
+  .dp-year-cell.dp-sel-active { background: var(--primary-dark); color: #fff; font-weight: 700; }
+
+  .dp-sel-divider { height: 1px; background: #f0f0f0; margin: 8px 0; }
+
+  .dp-month-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .dp-month-cell {
+    padding: 7px 2px; text-align: center; font-size: .75rem; font-weight: 500;
+    border-radius: 6px; cursor: pointer; color: var(--text); transition: background .1s, color .1s;
+  }
+  .dp-month-cell:hover { background: var(--surface-low-hover); }
+  .dp-month-cell.dp-sel-active { background: var(--primary-dark); color: #fff; font-weight: 700; }
+
+  .dp-sel-footer {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-soft);
+    display: flex; justify-content: flex-end;
+  }
+  .dp-back-btn {
+    padding: 5px 12px; border-radius: 6px; font-size: .75rem; font-weight: 600;
+    border: 1px solid var(--outline); background: var(--surface-lowest); color: var(--on-surface-variant);
+    cursor: pointer; transition: all .12s; display: flex; align-items: center; gap: 4px;
+  }
+  .dp-back-btn:hover { border-color: var(--primary-dark); color: var(--primary-dark); }
+
+  /* ── Apply / Clear / Badge ── */
+  .btn-apply-date {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: 8px; font-size: .82rem; font-weight: 600;
+    background: var(--primary-dark); color: #fff; border: 1.5px solid var(--primary-dark);
+    cursor: pointer; transition: all .15s;
+    box-shadow: 0 2px 8px rgba(135,0,9,.30);
+  }
+  .btn-apply-date:hover { background: #6b0007; box-shadow: 0 4px 12px rgba(135,0,9,.35); }
+
+  .btn-clear-date {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 12px; border-radius: 8px; font-size: .82rem; font-weight: 600;
+    background: var(--surface-lowest); color: var(--on-surface-variant); border: 1.5px solid var(--outline);
+    cursor: pointer; transition: all .15s; box-shadow: 0 1px 4px rgba(0,0,0,.10);
+  }
+  .btn-clear-date:hover { border-color: var(--primary-dark); color: var(--primary-dark); background: var(--primary-soft); }
+
+  .date-range-active-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 11px; border-radius: 9999px; font-size: .75rem; font-weight: 600;
+    background: var(--primary-soft); color: var(--primary-dark); border: 1px solid #fecdd3;
+  }
+
+  /* ── Fade-in animation ── */
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── Log detail modal ── */
+  #log-modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
+    align-items: center; justify-content: center;
+  }
+  #log-modal-overlay.open { display: flex; animation: fadeIn .15s ease; }
+  #log-modal {
+    background: var(--surface-lowest); border-radius: 16px; width: 100%; max-width: 760px;
+    max-height: 88vh; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3); display: flex; flex-direction: column;
+    border: 1.5px solid #e4e4e7;
+  }
+  #log-modal-header {
+    padding: 18px 24px 14px; border-bottom: 1.5px solid var(--border-soft);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    position: relative;
+  }
+  #log-modal-header::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 4px; background: var(--primary-dark); border-radius: 16px 16px 0 0;
+  }
+  #log-modal-header h3 { font-size: 1.05rem; font-weight: 800; color: var(--text-strong); margin-top: 4px; }
+  #log-modal-header .subline { font-size: .72rem; color: var(--text-dim); margin-top: 4px; font-family: ui-monospace, monospace; }
+  #log-modal-close {
+    background: none; border: none; font-size: 1rem; color: var(--text-dim);
+    cursor: pointer; padding: 4px 8px; border-radius: 6px;
+  }
+  #log-modal-close:hover { background: var(--surface-low-hover); color: var(--text-strong); }
+  #log-modal-body { padding: 18px 24px 22px; overflow-y: auto; }
+  .log-meta-grid {
+    display: grid; grid-template-columns: 100px 1fr; gap: 8px 14px;
+    font-size: .78rem; margin-bottom: 18px;
+  }
+  .log-meta-grid dt { color: var(--text-muted); font-weight: 600; }
+  .log-meta-grid dd {
+    color: var(--text-strong); font-weight: 500; word-break: break-all; margin: 0;
+  }
+  .log-meta-grid dd.mono { font-family: ui-monospace, monospace; font-size: .73rem; }
+  .log-section-title {
+    font-size: .72rem; font-weight: 800; color: var(--primary-dark); text-transform: uppercase;
+    letter-spacing: .05em; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    border-top: 1px solid var(--border-soft); padding-top: 14px;
+  }
+  .log-kv-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    font-size: .78rem; border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden;
+  }
+  .log-kv-table th, .log-kv-table td {
+    padding: 8px 12px; text-align: left; vertical-align: top; border: none;
+    border-bottom: 1px solid var(--border-soft); position: static;
+  }
+  .log-kv-table tr:last-child th, .log-kv-table tr:last-child td { border-bottom: none; }
+  .log-kv-table th {
+    background: var(--surface-low); width: 160px; font-weight: 600; color: var(--on-surface-variant);
+    font-size: .72rem; text-transform: none; letter-spacing: normal; border-bottom: 1px solid var(--border-soft);
+  }
+  .log-kv-table td {
+    color: var(--text-strong); font-family: ui-monospace, monospace; font-size: .73rem;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .log-kv-nested {
+    background: var(--surface-low); border: 1px solid var(--outline-variant); border-radius: 6px;
+    padding: 8px 10px; font-size: .72rem; white-space: pre-wrap; word-break: break-all;
+    color: var(--text); max-height: 200px; overflow-y: auto;
+  }
+  .details-toggle { cursor: pointer; color: #6366f1; font-size: .75rem; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ── 다크 모드 시맨틱 변형 ── */
+  html[data-theme="dark"] .badge-auth     { background: rgba(59,130,246,.18); color: #93c5fd; }
+  html[data-theme="dark"] .badge-user     { background: rgba(34,197,94,.18); color: #86efac; }
+  html[data-theme="dark"] .badge-session  { background: rgba(234,179,8,.18); color: #fde047; }
+  html[data-theme="dark"] .badge-response { background: rgba(139,92,246,.18); color: #c4b5fd; }
+  html[data-theme="dark"] .badge-email    { background: rgba(249,115,22,.18); color: #fdba74; }
+  html[data-theme="dark"] .badge-draft    { background: rgba(236,72,153,.18); color: #f9a8d4; }
+  html[data-theme="dark"] .badge-general  { background: var(--surface-low); color: var(--text-muted); }
+  html[data-theme="dark"] .details-toggle { color: #a5b4fc; }
+  html[data-theme="dark"] .dp-day.dp-in-range:not(.dp-selected) { background: rgba(220,38,38,.16); color: #fca5a5; }
+  html[data-theme="dark"] .dp-day.dp-selected:hover { background: rgba(176,17,22,.85); }
+  /* Tailwind 시맨틱 다크 (페이지 사용분만) */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50,
+  html[data-theme="dark"] .bg-gray-100    { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500  { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200,
+  html[data-theme="dark"] .border-gray-300 { border-color: var(--border) !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 md:px-8 py-6 max-w-screen-xl mx-auto">
+
+  <!-- Header banner (nt-dashboard style) -->
+  <div class="relative overflow-hidden rounded-2xl border border-gray-100 bg-white mb-7"
+       style="box-shadow: 0 4px 20px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.05);">
+    <!-- Red top stripe -->
+    <div class="absolute top-0 left-0 right-0 h-1 bg-[var(--primary-dark)] rounded-t-2xl opacity-90"></div>
+    <!-- Subtle red glow -->
+    <div class="absolute top-0 right-0 w-72 h-72 bg-[var(--primary-dark)] opacity-[0.04] blur-[70px] rounded-full pointer-events-none"></div>
+
+    <div class="relative z-10 flex items-center justify-between flex-wrap gap-4 p-6">
+      <div class="flex items-center gap-4">
+        <div class="p-3 bg-gray-50 rounded-xl border border-gray-100" style="box-shadow:0 1px 4px rgba(0,0,0,.08)">
+          <i class="bi bi-journal-text text-2xl text-[var(--primary-dark)] leading-none"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-extrabold tracking-tight text-[var(--primary-dark)] leading-none">System Logs</h1>
+          <p class="text-xs font-medium text-gray-400 mt-1.5">System activity records — Admin only</p>
+        </div>
+      </div>
+      <button onclick="refreshLogs()" class="btn-load-more">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Category filter tabs -->
+  <div class="flex flex-wrap gap-2 mb-4" id="filter-tabs">
+    <button class="filter-tab active" data-cat="all" onclick="setFilter('all')">
+      <i class="bi bi-list"></i> All
+    </button>
+    <button class="filter-tab" data-cat="email" onclick="setFilter('email')">
+      <i class="bi bi-envelope-fill"></i> Email
+    </button>
+    <button class="filter-tab" data-cat="draft" onclick="setFilter('draft')">
+      <i class="bi bi-file-earmark-text-fill"></i> Draft
+    </button>
+    <button class="filter-tab" data-cat="user" onclick="setFilter('user')">
+      <i class="bi bi-person-fill"></i> User
+    </button>
+    <button class="filter-tab" data-cat="response" onclick="setFilter('response')">
+      <i class="bi bi-clipboard2-check-fill"></i> Response
+    </button>
+    <button class="filter-tab" data-cat="session" onclick="setFilter('session')">
+      <i class="bi bi-calendar-check-fill"></i> Session
+    </button>
+    <button class="filter-tab" data-cat="auth" onclick="setFilter('auth')">
+      <i class="bi bi-shield-lock-fill"></i> Auth
+    </button>
+  </div>
+
+  <!-- Date range filter -->
+  <div class="flex flex-wrap items-center gap-3 mb-4" id="date-range-row">
+    <span class="text-sm text-gray-400 flex items-center gap-1 font-medium">
+      <i class="bi bi-calendar3 text-[var(--primary-dark)]"></i> Period (KST)
+    </span>
+
+    <!-- From picker -->
+    <div class="dp-wrap" id="dp-wrap-from">
+      <div class="dp-input-box" id="dp-box-from" onclick="dpOpen('from')">
+        <i class="bi bi-calendar3 dp-icon"></i>
+        <span class="dp-label placeholder" id="dp-label-from">From</span>
+        <i class="bi bi-chevron-down dp-caret"></i>
+      </div>
+      <div class="dp-popup" id="dp-popup-from" style="display:none">
+        <!-- Calendar view -->
+        <div id="dp-cal-from">
+          <div class="dp-header">
+            <button class="dp-nav-btn" onclick="dpPrevMonth('from')"><i class="bi bi-chevron-left"></i></button>
+            <span class="dp-month-label" id="dp-month-from" onclick="dpToggleSel('from')">
+              <span id="dp-month-text-from"></span>
+              <i class="bi bi-chevron-down dp-sel-caret" id="dp-sel-caret-from"></i>
+            </span>
+            <button class="dp-nav-btn" onclick="dpNextMonth('from')"><i class="bi bi-chevron-right"></i></button>
+          </div>
+          <div class="dp-grid" id="dp-grid-from"></div>
+          <div class="dp-footer">
+            <button class="dp-today-btn" onclick="dpGoToday('from')">
+              <i class="bi bi-dot" style="font-size:1.1rem;margin:-2px -2px -2px -4px"></i> Today
+            </button>
+            <button class="dp-clear-btn" onclick="dpClear('from')">Clear</button>
+          </div>
+        </div>
+        <!-- Selector view -->
+        <div class="dp-sel-view" id="dp-sel-from">
+          <div class="dp-sel-header">
+            <button class="dp-nav-btn" onclick="dpSelPrevYears('from')"><i class="bi bi-chevron-left"></i></button>
+            <span class="dp-sel-title">Year &amp; Month</span>
+            <button class="dp-nav-btn" onclick="dpSelNextYears('from')"><i class="bi bi-chevron-right"></i></button>
+          </div>
+          <div class="dp-year-grid" id="dp-year-grid-from"></div>
+          <div class="dp-sel-divider"></div>
+          <div class="dp-month-grid" id="dp-month-grid-from"></div>
+          <div class="dp-sel-footer">
+            <button class="dp-back-btn" onclick="dpToggleSel('from')">
+              <i class="bi bi-arrow-left"></i> Back
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <span class="text-gray-300 text-sm">→</span>
+
+    <!-- To picker -->
+    <div class="dp-wrap" id="dp-wrap-to">
+      <div class="dp-input-box" id="dp-box-to" onclick="dpOpen('to')">
+        <i class="bi bi-calendar3 dp-icon"></i>
+        <span class="dp-label placeholder" id="dp-label-to">To</span>
+        <i class="bi bi-chevron-down dp-caret"></i>
+      </div>
+      <div class="dp-popup" id="dp-popup-to" style="display:none">
+        <!-- Calendar view -->
+        <div id="dp-cal-to">
+          <div class="dp-header">
+            <button class="dp-nav-btn" onclick="dpPrevMonth('to')"><i class="bi bi-chevron-left"></i></button>
+            <span class="dp-month-label" id="dp-month-to" onclick="dpToggleSel('to')">
+              <span id="dp-month-text-to"></span>
+              <i class="bi bi-chevron-down dp-sel-caret" id="dp-sel-caret-to"></i>
+            </span>
+            <button class="dp-nav-btn" onclick="dpNextMonth('to')"><i class="bi bi-chevron-right"></i></button>
+          </div>
+          <div class="dp-grid" id="dp-grid-to"></div>
+          <div class="dp-footer">
+            <button class="dp-today-btn" onclick="dpGoToday('to')">
+              <i class="bi bi-dot" style="font-size:1.1rem;margin:-2px -2px -2px -4px"></i> Today
+            </button>
+            <button class="dp-clear-btn" onclick="dpClear('to')">Clear</button>
+          </div>
+        </div>
+        <!-- Selector view -->
+        <div class="dp-sel-view" id="dp-sel-to">
+          <div class="dp-sel-header">
+            <button class="dp-nav-btn" onclick="dpSelPrevYears('to')"><i class="bi bi-chevron-left"></i></button>
+            <span class="dp-sel-title">Year &amp; Month</span>
+            <button class="dp-nav-btn" onclick="dpSelNextYears('to')"><i class="bi bi-chevron-right"></i></button>
+          </div>
+          <div class="dp-year-grid" id="dp-year-grid-to"></div>
+          <div class="dp-sel-divider"></div>
+          <div class="dp-month-grid" id="dp-month-grid-to"></div>
+          <div class="dp-sel-footer">
+            <button class="dp-back-btn" onclick="dpToggleSel('to')">
+              <i class="bi bi-arrow-left"></i> Back
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-apply-date" onclick="applyDateRange()">
+      <i class="bi bi-funnel-fill"></i> Apply
+    </button>
+    <button class="btn-clear-date" id="btn-clear-date" onclick="clearDateRange()" style="display:none">
+      <i class="bi bi-x-lg"></i> Clear
+    </button>
+    <span class="date-range-active-badge" id="date-active-badge" style="display:none">
+      <i class="bi bi-calendar-check-fill"></i>
+      <span id="date-active-label"></span>
+    </span>
+  </div>
+
+  <!-- Search + page size controls -->
+  <div class="flex flex-wrap items-center gap-3 mb-4">
+    <div class="search-wrap">
+      <i class="bi bi-search search-icon"></i>
+      <input type="text" id="search-input" placeholder="Search action, actor, target…"
+             oninput="onSearchInput(this.value)" />
+      <button class="clear-btn" id="search-clear" onclick="clearSearch()">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="text-sm text-gray-500 whitespace-nowrap">Per page:</label>
+      <div class="relative inline-block">
+        <div class="dyb-dd-trigger dyb-dd-sm" id="pageSizeTrigger" onclick="dybToggle('pageSize')">
+          <span class="dyb-label">50</span><i class="bi bi-chevron-down"></i>
+        </div>
+        <div class="dyb-dd-menu to-right" id="pageSizeMenu">
+          <div class="dyb-dd-option" data-value="25"  onclick="dybPick('pageSize','25','25')">25</div>
+          <div class="dyb-dd-option selected" data-value="50"  onclick="dybPick('pageSize','50','50')">50</div>
+          <div class="dyb-dd-option" data-value="100" onclick="dybPick('pageSize','100','100')">100</div>
+          <div class="dyb-dd-option" data-value="200" onclick="dybPick('pageSize','200','200')">200</div>
+        </div>
+        <select id="pageSizeSelect" onchange="onPageSizeChange(this.value)" class="sr-only">
+          <option value="25">25</option><option value="50" selected>50</option>
+          <option value="100">100</option><option value="200">200</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="status-bar" class="text-sm text-gray-500 mb-3 flex items-center gap-2 h-5">
+    <span id="status-text"></span>
+  </div>
+
+  <!-- Table card -->
+  <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+       style="box-shadow: 0 6px 24px rgba(0,0,0,.09), 0 2px 6px rgba(0,0,0,.05);">
+    <div class="overflow-x-auto">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:160px">Time (KST)</th>
+            <th style="width:90px">Category</th>
+            <th>Action</th>
+            <th style="width:180px">Actor</th>
+            <th style="width:180px">Target</th>
+          </tr>
+        </thead>
+        <tbody id="log-tbody">
+          <tr id="loading-row">
+            <td colspan="5" class="text-center py-10 text-gray-400">
+              <i class="bi bi-hourglass-split text-2xl block mb-2"></i>
+              Loading…
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div class="mt-4 flex justify-center">
+    <div id="paginationWrap" class="dyb-pagination"></div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block modals %}
+<!-- Log detail modal (rendered at body level to escape main stacking context) -->
+<div id="log-modal-overlay" class="dyb-modal-overlay" onclick="closeLogModal(event)">
+  <div id="log-modal" onclick="event.stopPropagation()">
+    <div id="log-modal-header">
+      <div>
+        <h3 id="log-modal-title">Log Detail</h3>
+        <div class="subline" id="log-modal-action"></div>
+      </div>
+      <button id="log-modal-close" onclick="closeLogModal()"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div id="log-modal-body"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const SERVER_FETCH_LIMIT = 1000;
+  let pageSize = 50;
+  let currentCategory = 'all';
+  let isLoading = false;
+  let searchQuery = '';
+  let activeDateFrom = '';
+  let activeDateTo   = '';
+  let allLogs = [];
+  let filteredLogs = [];
+  let paginator = null;
+
+  const CATEGORY_LABELS = {
+    auth: 'Auth', user: 'User', session: 'Session',
+    response: 'Response', email: 'Email', draft: 'Draft', general: 'General'
+  };
+
+  // 사람이 읽기 쉬운 action 설명
+  const ACTION_LABELS = {
+    // auth
+    login_success: '로그인 성공',
+    login_failed: '로그인 실패',
+    logout: '로그아웃',
+    user_register: '사용자 회원가입',
+    password_reset_request: '비밀번호 재설정 요청',
+    password_reset_success: '비밀번호 재설정 완료',
+    // user
+    user_create_by_admin: '관리자에 의한 사용자 생성',
+    user_update: '사용자 정보 수정',
+    user_delete: '사용자 삭제',
+    // session
+    eval_session_create: '평가 세션 생성',
+    eval_session_update: '평가 세션 수정',
+    eval_session_delete: '평가 세션 삭제',
+    // response
+    eval_response_create: '평가 응답 생성',
+    eval_response_update: '평가 응답 수정',
+    eval_response_delete: '평가 응답 삭제',
+    eval_test_responses_delete: '테스트 응답 일괄 삭제',
+    // email / draft
+    notification_email_sent: '알림 이메일 발송',
+    otp_email_sent: 'OTP 이메일 발송',
+    reset_email_sent: '비밀번호 재설정 이메일 발송',
+    gmail_draft_created: 'Gmail 초안 생성',
+    // legal
+    legal_doc_view_editor: '법적 문서 편집기 열람',
+    legal_doc_update: '법적 문서 수정',
+  };
+
+  function humanizeAction(action) {
+    if (!action) return '—';
+    if (ACTION_LABELS[action]) return ACTION_LABELS[action];
+    return action.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  /* ── Rendering ── */
+  function fmtTimestamp(iso) {
+    if (!iso) return '-';
+    try {
+      const d = new Date(iso);
+      const kst = new Date(d.getTime() + 9 * 3600 * 1000);
+      const pad = n => String(n).padStart(2, '0');
+      return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth()+1)}-${pad(kst.getUTCDate())}<br>
+              <span class="text-gray-400 text-xs">${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}:${pad(kst.getUTCSeconds())}</span>`;
+    } catch { return iso; }
+  }
+
+  function badgeHtml(cat) {
+    const safe = (cat && cat !== 'undefined') ? cat : 'general';
+    const label = CATEGORY_LABELS[safe] || safe;
+    return `<span class="badge badge-${safe}">${label}</span>`;
+  }
+
+  // 현재 렌더된 페이지 행 (모달에서 참조)
+  let currentPageLogs = [];
+
+  function _summaryDetail(details) {
+    if (!details || typeof details !== 'object') return '';
+    const keys = Object.keys(details);
+    if (!keys.length) return '';
+    // 첫 1~2개 key의 값만 요약
+    return keys.slice(0, 2).map(k => {
+      const v = details[k];
+      const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      return `<span class="text-gray-500"><b>${escHtml(k)}</b>: ${escHtml(s.length > 40 ? s.slice(0,40)+'…' : s)}</span>`;
+    }).join(' · ');
+  }
+
+  function renderRow(log, i) {
+    return `<tr data-action="${escAttr(log.action)}" data-actor="${escAttr(log.actor)}" data-target="${escAttr(log.target)}"
+               onclick="openLogModal(${i})" style="cursor:pointer">
+      <td class="font-mono text-xs leading-relaxed">${fmtTimestamp(log.timestamp)}</td>
+      <td>${badgeHtml(log.category)}</td>
+      <td class="text-xs break-all">
+        <div class="font-semibold text-gray-800">${escHtml(humanizeAction(log.action))}</div>
+        <div class="font-mono text-[10px] text-gray-400 mt-0.5">${escHtml(log.action || '')}</div>
+      </td>
+      <td class="text-xs break-all text-gray-600">${escHtml(log.actor || '')}</td>
+      <td class="text-xs break-all text-gray-600">${escHtml(log.target || '')}</td>
+    </tr>`;
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escAttr(str) {
+    return String(str||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  /* ── Log detail modal ── */
+  function _fmtValue(v) {
+    if (v === null || v === undefined) return '<span class="text-gray-400">—</span>';
+    if (typeof v === 'boolean') return v ? '✓ true' : '✗ false';
+    if (typeof v === 'number') return escHtml(v.toLocaleString());
+    if (Array.isArray(v)) {
+      if (v.length === 0) return '<span class="text-gray-400">[]</span>';
+      return `<div class="log-kv-nested">${escHtml(JSON.stringify(v, null, 2))}</div>`;
+    }
+    if (typeof v === 'object') {
+      return `<div class="log-kv-nested">${escHtml(JSON.stringify(v, null, 2))}</div>`;
+    }
+    return escHtml(String(v));
+  }
+
+  function _renderKVTable(obj) {
+    if (!obj || typeof obj !== 'object' || !Object.keys(obj).length) {
+      return '<p class="text-xs text-gray-400">추가 상세 정보가 없습니다.</p>';
+    }
+    const rows = Object.keys(obj).map(k =>
+      `<tr><th>${escHtml(k)}</th><td>${_fmtValue(obj[k])}</td></tr>`
+    ).join('');
+    return `<table class="log-kv-table">${rows}</table>`;
+  }
+
+  function openLogModal(idx) {
+    const log = currentPageLogs[idx];
+    if (!log) return;
+    const title = humanizeAction(log.action);
+    document.getElementById('log-modal-title').textContent = title;
+    document.getElementById('log-modal-action').textContent = log.action || '';
+
+    const meta = `
+      <dl class="log-meta-grid">
+        <dt>Time (KST)</dt><dd class="mono">${fmtTimestamp(log.timestamp).replace('<br>', ' ')}</dd>
+        <dt>Category</dt><dd>${badgeHtml(log.category)}</dd>
+        <dt>Actor</dt><dd>${escHtml(log.actor || '—')}</dd>
+        <dt>Target</dt><dd class="mono">${escHtml(log.target || '—')}</dd>
+        ${log.id ? `<dt>Log ID</dt><dd class="mono text-[.68rem] text-gray-400">${escHtml(log.id)}</dd>` : ''}
+      </dl>
+      <div class="log-section-title"><i class="bi bi-info-circle-fill"></i> Details</div>
+      ${_renderKVTable(log.details)}`;
+    document.getElementById('log-modal-body').innerHTML = meta;
+    document.getElementById('log-modal-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', _onLogModalEsc);
+  }
+
+  function closeLogModal() {
+    document.getElementById('log-modal-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+    document.removeEventListener('keydown', _onLogModalEsc);
+  }
+
+  function _onLogModalEsc(e) {
+    if (e.key === 'Escape') closeLogModal();
+  }
+
+  function setStatus(msg) {
+    document.getElementById('status-text').textContent = msg;
+  }
+
+  /* ── Search (client-side over allLogs) ── */
+  function applySearch() {
+    const q = searchQuery.toLowerCase().trim();
+    filteredLogs = !q ? allLogs.slice() : allLogs.filter(log => {
+      const hay = `${log.action||''} ${log.actor||''} ${log.target||''}`.toLowerCase();
+      return hay.includes(q);
+    });
+    if (paginator) paginator.setData(filteredLogs);
+    updateStatus();
+  }
+
+  function updateStatus() {
+    const total = allLogs.length;
+    const shown = filteredLogs.length;
+    const cap = total >= SERVER_FETCH_LIMIT ? ` (capped at ${SERVER_FETCH_LIMIT})` : '';
+    if (searchQuery) {
+      setStatus(`Showing ${shown} of ${total} entries (filtered)${cap}`);
+    } else {
+      setStatus(`${total} entries${cap}`);
+    }
+  }
+
+  function onSearchInput(val) {
+    searchQuery = val;
+    document.getElementById('search-clear').style.display = val ? 'block' : 'none';
+    applySearch();
+  }
+  function clearSearch() {
+    const input = document.getElementById('search-input');
+    input.value = ''; onSearchInput(''); input.focus();
+  }
+
+  /* ── Custom Datepicker ── */
+  const MONTHS_LONG  = ['January','February','March','April','May','June',
+                        'July','August','September','October','November','December'];
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun',
+                        'Jul','Aug','Sep','Oct','Nov','Dec'];
+  const WEEKDAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  const dpState = {
+    from: { year: null, month: null, selected: '', selYearBase: null },
+    to:   { year: null, month: null, selected: '', selYearBase: null }
+  };
+
+  function dpInit() {
+    const now = new Date();
+    ['from','to'].forEach(id => {
+      dpState[id].year  = now.getFullYear();
+      dpState[id].month = now.getMonth();
+      dpState[id].selYearBase = now.getFullYear() - 4;
+    });
+  }
+
+  function dpOpen(id) {
+    const popup = document.getElementById(`dp-popup-${id}`);
+    const box   = document.getElementById(`dp-box-${id}`);
+    const other = id === 'from' ? 'to' : 'from';
+    const wasOpen = popup.style.display !== 'none';
+
+    document.getElementById(`dp-popup-${other}`).style.display = 'none';
+    document.getElementById(`dp-box-${other}`).classList.remove('open');
+
+    if (wasOpen) {
+      popup.style.display = 'none';
+      box.classList.remove('open');
+    } else {
+      // always start in calendar view when opening
+      document.getElementById(`dp-sel-${id}`).classList.remove('active');
+      document.getElementById(`dp-cal-${id}`).style.display = '';
+      document.getElementById(`dp-month-${id}`).classList.remove('sel-open');
+      dpRender(id);
+      popup.style.display = '';
+      box.classList.add('open');
+    }
+  }
+
+  function dpClose(id) {
+    document.getElementById(`dp-popup-${id}`).style.display = 'none';
+    document.getElementById(`dp-box-${id}`).classList.remove('open');
+  }
+
+  /* Calendar rendering */
+  function dpRender(id) {
+    const s = dpState[id];
+    document.getElementById(`dp-month-text-${id}`).textContent = `${MONTHS_LONG[s.month]} ${s.year}`;
+
+    const grid = document.getElementById(`dp-grid-${id}`);
+    grid.innerHTML = '';
+
+    WEEKDAYS.forEach(d => {
+      const el = document.createElement('div');
+      el.className = 'dp-weekday'; el.textContent = d;
+      grid.appendChild(el);
+    });
+
+    const firstDay    = new Date(s.year, s.month, 1).getDay();
+    const daysInMonth = new Date(s.year, s.month + 1, 0).getDate();
+    const today       = new Date();
+    const todayStr    = dateToStr(today.getFullYear(), today.getMonth(), today.getDate());
+    const selFrom     = dpState.from.selected;
+    const selTo       = dpState.to.selected;
+
+    for (let i = 0; i < firstDay; i++) {
+      const el = document.createElement('div');
+      el.className = 'dp-day dp-empty'; grid.appendChild(el);
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = dateToStr(s.year, s.month, d);
+      const el = document.createElement('div');
+      el.className = 'dp-day'; el.textContent = d;
+
+      if (dateStr === todayStr) el.classList.add('dp-today');
+      if (dateStr === selFrom || dateStr === selTo) el.classList.add('dp-selected');
+      if (selFrom && selTo) {
+        if (dateStr > selFrom && dateStr < selTo) el.classList.add('dp-in-range');
+        if (dateStr === selFrom) el.classList.add('dp-in-range','dp-range-start');
+        if (dateStr === selTo)   el.classList.add('dp-in-range','dp-range-end');
+      }
+      el.addEventListener('click', () => dpSelect(id, dateStr));
+      grid.appendChild(el);
+    }
+  }
+
+  /* Year/month selector */
+  function dpToggleSel(id) {
+    const calView = document.getElementById(`dp-cal-${id}`);
+    const selView = document.getElementById(`dp-sel-${id}`);
+    const label   = document.getElementById(`dp-month-${id}`);
+    const isOpen  = selView.classList.contains('active');
+
+    if (isOpen) {
+      selView.classList.remove('active');
+      calView.style.display = '';
+      label.classList.remove('sel-open');
+    } else {
+      dpRenderSel(id);
+      selView.classList.add('active');
+      calView.style.display = 'none';
+      label.classList.add('sel-open');
+    }
+  }
+
+  function dpRenderSel(id) {
+    const s    = dpState[id];
+    const now  = new Date();
+    const thisYear = now.getFullYear();
+    const base = s.selYearBase;
+
+    // Year grid (9 years)
+    const yearGrid = document.getElementById(`dp-year-grid-${id}`);
+    yearGrid.innerHTML = '';
+    for (let y = base; y < base + 9; y++) {
+      const el = document.createElement('div');
+      el.className = 'dp-year-cell'; el.textContent = y;
+      if (y === thisYear) el.classList.add('dp-this-year');
+      if (y === s.year)   el.classList.add('dp-sel-active');
+      el.addEventListener('click', () => { dpState[id].year = y; dpRenderSel(id); });
+      yearGrid.appendChild(el);
+    }
+
+    // Month grid
+    const monthGrid = document.getElementById(`dp-month-grid-${id}`);
+    monthGrid.innerHTML = '';
+    MONTHS_SHORT.forEach((m, i) => {
+      const el = document.createElement('div');
+      el.className = 'dp-month-cell'; el.textContent = m;
+      if (i === s.month) el.classList.add('dp-sel-active');
+      el.addEventListener('click', () => {
+        dpState[id].month = i;
+        dpToggleSel(id);  // back to calendar
+        dpRender(id);
+      });
+      monthGrid.appendChild(el);
+    });
+  }
+
+  function dpSelPrevYears(id) {
+    dpState[id].selYearBase -= 9; dpRenderSel(id);
+  }
+  function dpSelNextYears(id) {
+    dpState[id].selYearBase += 9; dpRenderSel(id);
+  }
+
+  function dpSelect(id, dateStr) {
+    dpState[id].selected = dateStr;
+    const label = document.getElementById(`dp-label-${id}`);
+    label.textContent = dateStr; label.classList.remove('placeholder');
+    dpClose(id);
+    dpRender('from'); dpRender('to');
+  }
+
+  function dpClear(id) {
+    dpState[id].selected = '';
+    const label = document.getElementById(`dp-label-${id}`);
+    label.textContent = id === 'from' ? 'From' : 'To';
+    label.classList.add('placeholder');
+    dpClose(id);
+    dpRender('from'); dpRender('to');
+  }
+
+  function dpGoToday(id) {
+    const now = new Date();
+    dpState[id].year  = now.getFullYear();
+    dpState[id].month = now.getMonth();
+    const todayStr = dateToStr(now.getFullYear(), now.getMonth(), now.getDate());
+    dpSelect(id, todayStr);
+  }
+
+  function dpPrevMonth(id) {
+    const s = dpState[id];
+    if (s.month === 0) { s.month = 11; s.year--; } else s.month--;
+    dpRender(id);
+  }
+  function dpNextMonth(id) {
+    const s = dpState[id];
+    if (s.month === 11) { s.month = 0; s.year++; } else s.month++;
+    dpRender(id);
+  }
+
+  function dateToStr(y, m, d) {
+    return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+
+  document.addEventListener('click', e => {
+    ['from','to'].forEach(id => {
+      const wrap = document.getElementById(`dp-wrap-${id}`);
+      if (wrap && !wrap.contains(e.target)) dpClose(id);
+    });
+  });
+
+  /* ── Date range apply / clear ── */
+  function kstDateToUtc(dateStr, isEnd) {
+    if (!dateStr) return '';
+    const kst = new Date(dateStr + (isEnd ? 'T23:59:59' : 'T00:00:00') + '+09:00');
+    return kst.toISOString().slice(0, 19);
+  }
+
+  function applyDateRange() {
+    const fromVal = dpState.from.selected;
+    const toVal   = dpState.to.selected;
+    if (!fromVal && !toVal) { clearDateRange(); return; }
+    if (fromVal && toVal && fromVal > toVal) {
+      alert('"From" date must be before or equal to "To" date.'); return;
+    }
+    activeDateFrom = fromVal ? kstDateToUtc(fromVal, false) : '';
+    activeDateTo   = toVal   ? kstDateToUtc(toVal,   true)  : '';
+
+    const parts = [];
+    if (fromVal) parts.push(fromVal);
+    if (toVal)   parts.push(toVal);
+    document.getElementById('date-active-label').textContent = parts.join(' → ');
+    document.getElementById('date-active-badge').style.display = '';
+    document.getElementById('btn-clear-date').style.display = '';
+
+    fetchLogs();
+  }
+
+  function clearDateRange() {
+    activeDateFrom = ''; activeDateTo = '';
+    dpClear('from'); dpClear('to');
+    document.getElementById('date-active-badge').style.display = 'none';
+    document.getElementById('btn-clear-date').style.display    = 'none';
+    fetchLogs();
+  }
+
+  function onPageSizeChange(val) {
+    pageSize = parseInt(val, 10);
+    if (paginator) paginator.setPageSize(pageSize);
+  }
+
+  /* ── Render current page ── */
+  function renderPage(pageItems) {
+    currentPageLogs = pageItems;
+    const tbody = document.getElementById('log-tbody');
+    if (!pageItems.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400">
+        <i class="bi bi-inbox text-2xl block mb-2"></i>No logs found.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = pageItems.map((log, i) => renderRow(log, i)).join('');
+  }
+
+  /* ── Fetch (single batch, client-side pagination) ── */
+  async function fetchLogs() {
+    if (isLoading) return;
+    isLoading = true;
+    setStatus('Loading…');
+    document.getElementById('log-tbody').innerHTML =
+      `<tr><td colspan="5" class="text-center py-10 text-gray-400">
+        <i class="bi bi-hourglass-split text-2xl block mb-2"></i>Loading…</td></tr>`;
+
+    const params = new URLSearchParams({ category: currentCategory, limit: SERVER_FETCH_LIMIT });
+    if (activeDateFrom) params.set('date_from', activeDateFrom);
+    if (activeDateTo)   params.set('date_to',   activeDateTo);
+
+    try {
+      const res  = await fetch(`/api/logs/fetch?${params}`);
+      const data = await res.json();
+      if (data.status !== 'SUCCESS') throw new Error(data.message || 'ERROR');
+      allLogs = data.logs || [];
+      applySearch();
+    } catch (e) {
+      setStatus('Error: ' + e.message);
+      document.getElementById('log-tbody').innerHTML =
+        `<tr><td colspan="5" class="text-center py-10 text-red-400">Error: ${escHtml(e.message)}</td></tr>`;
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  function setFilter(cat) {
+    currentCategory = cat;
+    searchQuery = '';
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-clear').style.display = 'none';
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+    fetchLogs();
+  }
+
+  function refreshLogs() {
+    searchQuery = '';
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-clear').style.display = 'none';
+    fetchLogs();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    dpInit();
+    paginator = DYBPaginate.create({
+      wrap: '#paginationWrap',
+      pageSize: pageSize,
+      onRender: renderPage,
+      scrollTo: '#status-bar',
+    });
+    fetchLogs();
+  });
+</script>
+{% endblock %}

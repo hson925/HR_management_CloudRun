@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>NHR Portal - Login</title>
+    
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}"/>
+    <style>
+        body { font-family: 'Inter', sans-serif; opacity: 0; }
+        .btn-primary { transition: all 0.2s ease; }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(135, 0, 9, 0.35);
+            filter: brightness(1.08);
+        }
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0px) scale(0.98);
+            box-shadow: 0 2px 8px rgba(135, 0, 9, 0.2);
+        }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-secondary { transition: all 0.2s ease; }
+        .btn-secondary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            border-color: #870009 !important;
+            color: #870009;
+        }
+        .btn-secondary:active:not(:disabled) { transform: translateY(0px) scale(0.98); }
+        .btn-secondary:disabled { opacity: 0.7; cursor: not-allowed; }
+        .tooltip-container { position: relative; }
+        .tooltip {
+            visibility: hidden;
+            opacity: 0;
+            background-color: #2d3133;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 8px 12px;
+            position: absolute;
+            z-index: 100;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            width: 260px;
+            font-size: 11px;
+            line-height: 1.5;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #2d3133;
+        }
+        .tooltip-container:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spinning {
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+    </style>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+        function showStaffVerifyModal() {
+            document.getElementById('staff-verify-modal').classList.remove('hidden');
+            document.getElementById('staff-emp-id').focus();
+        }
+
+        window.closeStaffVerifyModal = function() {
+            document.getElementById('staff-verify-modal').classList.add('hidden');
+            document.getElementById('staff-emp-id').value = '';
+            document.getElementById('staff-passport').value = '';
+            document.getElementById('staff-verify-error').classList.add('hidden');
+            const btn = document.getElementById('btn-google');
+            btnReset(btn);
+        }
+    
+    
+
+        window.submitStaffVerify = async function() {
+            const empId = document.getElementById('staff-emp-id').value.trim();
+            const passport = document.getElementById('staff-passport').value.trim();
+            if (!empId || !passport) {
+                document.getElementById('staff-verify-error-text').textContent = 'Please fill in all fields.';
+                document.getElementById('staff-verify-error').classList.remove('hidden');
+                return;
+            }
+            const btn = document.getElementById('btn-staff-verify');
+            btnLoading(btn);
+
+            // 1. 직원 검증
+            const verifyRes = await fetch('/api/auth/verify-staff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ empId, passport })
+            });
+            const verifyData = await verifyRes.json();
+
+            if (verifyData.status !== 'OK') {
+                document.getElementById('staff-verify-error-text').textContent = verifyData.message || 'Verification failed.';
+                document.getElementById('staff-verify-error').classList.remove('hidden');
+                btnReset(btn);
+                return;
+            }
+
+            // 2. 검증 성공 → 1회용 토큰과 함께 로그인 완료 요청
+            const loginRes = await fetch('/api/auth/complete-google-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ staffToken: verifyData.staffToken })
+            });
+            const loginData = await loginRes.json();
+
+            if (loginData.status === 'OK') {
+                window.location.href = loginData.redirect;
+            } else {
+                document.getElementById('staff-verify-error-text').textContent = loginData.message || 'Login failed.';
+                document.getElementById('staff-verify-error').classList.remove('hidden');
+                btnReset(btn);
+            }
+        }
+        const firebaseConfig = {
+            apiKey: "AIzaSyREDACTED_FIREBASE_WEB_API_KEY",
+            authDomain: "premium-arc-490609-m4.firebaseapp.com",
+            projectId: "premium-arc-490609-m4",
+            storageBucket: "premium-arc-490609-m4.firebasestorage.app",
+            messagingSenderId: "000000000000",
+            appId: "1:000000000000:web:0b908e825a174e5ba6812d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        function btnLoading(btn) {
+            btn.disabled = true;
+            btn.dataset.originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat spinning text-[22px]"></i>';
+        }
+        function btnReset(btn) {
+            btn.disabled = false;
+            if (btn.dataset.originalHtml) {
+                btn.innerHTML = btn.dataset.originalHtml;
+                delete btn.dataset.originalHtml;
+            }
+        }
+
+        // ✅ Firebase 인증 후 서버로 토큰 전송
+        async function sendTokenToServer(user, loginType = 'email') {
+            const googleBtn = document.getElementById('btn-google');
+            const loginBtn  = document.getElementById('btn-login');
+            try {
+                const idToken = await user.getIdToken();
+                const response = await fetch('/api/auth/firebase', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idToken, loginType })
+                });
+                if (!response.ok && response.status !== 200) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.status === 'OK') {
+                    window.location.href = data.redirect;
+                } else if (data.status === 'OTP_REQUIRED') {
+                    btnReset(loginBtn);
+                    showOtpScreen();
+                } else if (data.status === 'STAFF_VERIFY_REQUIRED') {
+                    btnReset(googleBtn);
+                    showStaffVerifyModal();
+                } else {
+                    btnReset(loginType === 'google' ? googleBtn : loginBtn);
+                    showError(data.message || 'Authentication failed.');
+                }
+            } catch (e) {
+                btnReset(loginType === 'google' ? googleBtn : loginBtn);
+                showError('Login failed. Please try again.');
+                console.error('sendTokenToServer error:', e);
+            }
+        }
+
+        // ✅ Google 로그인
+        window.loginWithGoogle = async function() {
+            const btn = document.getElementById('btn-google');
+            btnLoading(btn);
+            try {
+                const provider = new GoogleAuthProvider();
+                provider.setCustomParameters({ prompt: 'select_account' });
+                const result = await signInWithPopup(auth, provider);
+                await sendTokenToServer(result.user, 'google');
+            } catch (e) {
+                // 팝업 닫기/취소는 오류가 아니므로 에러 메시지 없이 버튼만 복구
+                if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') {
+                    btnReset(btn);
+                } else {
+                    showError('Google login failed. Please try again.');
+                    console.error(e);
+                    btnReset(btn);
+                }
+            }
+        }
+
+        // ✅ 이메일/비밀번호 로그인
+        window.loginWithEmail = async function(email, password) {
+            const btn = document.getElementById('btn-login');
+            btnLoading(btn);
+            try {
+                const result = await signInWithEmailAndPassword(auth, email, password);
+                await sendTokenToServer(result.user);
+            } catch (e) {
+                if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+                    showError('Invalid Employee ID or Password.');
+                } else {
+                    showError('Login failed. Please try again.');
+                }
+                console.error(e);
+                btnReset(btn);
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-message');
+            const textEl = document.getElementById('error-text');
+            if (el && textEl) {
+                textEl.textContent = msg;
+                el.classList.remove('hidden');
+            }
+        }
+
+        function showOtpScreen() {
+            document.getElementById('otp-input').value = '';
+            document.getElementById('otp-error').classList.add('hidden');
+            document.getElementById('otp-modal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('otp-input').focus(), 100);
+        }
+
+        window.closeOtpModal = function() {
+            document.getElementById('otp-modal').classList.add('hidden');
+            const btn = document.getElementById('btn-login');
+            btnReset(btn);
+        }
+
+        window.submitOtp = async function() {
+            const otp = document.getElementById('otp-input').value.trim();
+            if (!otp) {
+                document.getElementById('otp-error-text').textContent = 'Please enter the OTP.';
+                document.getElementById('otp-error').classList.remove('hidden');
+                return;
+            }
+            const btn = document.getElementById('btn-otp');
+            btnLoading(btn);
+            const response = await fetch('/api/auth/verify-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otp })
+            });
+            const data = await response.json();
+            if (data.status === 'OK') {
+                window.location.href = data.redirect;
+            } else {
+                document.getElementById('otp-error-text').textContent = data.message || 'Invalid OTP.';
+                document.getElementById('otp-error').classList.remove('hidden');
+                btnReset(btn);
+            }
+        }
+    </script>
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-tertiary": "#ffffff", "on-surface-variant": "#5b403d", "on-secondary-fixed-variant": "#404758",
+                        "surface-variant": "#e0e3e5", "on-background": "#191c1e", "inverse-surface": "#2d3133",
+                        "on-tertiary-fixed-variant": "#404752", "on-primary-fixed": "#410002", "surface": "#f7f9fb",
+                        "on-surface": "#191c1e", "primary": "#870009", "on-tertiary-fixed": "#151c25",
+                        "error": "#ba1a1a", "error-container": "#ffdad6", "surface-bright": "#f7f9fb",
+                        "inverse-on-surface": "#eff1f3", "on-primary": "#ffffff", "tertiary-fixed-dim": "#c0c7d3",
+                        "on-error": "#ffffff", "on-error-container": "#93000a", "surface-container-low": "#f2f4f6",
+                        "on-secondary-container": "#5c6274", "surface-tint": "#ba1b1c", "on-primary-fixed-variant": "#93000b",
+                        "secondary-fixed": "#dce2f7", "secondary-container": "#d9dff5", "inverse-primary": "#ffb4ab",
+                        "tertiary-fixed": "#dce3f0", "background": "#f7f9fb", "tertiary": "#3a414b",
+                        "tertiary-container": "#515863", "primary-fixed-dim": "#ffb4ab", "surface-container-lowest": "#ffffff",
+                        "outline": "#906f6c", "primary-container": "#b01116", "surface-container": "#eceef0",
+                        "on-tertiary-container": "#c7cedb", "primary-fixed": "#ffdad6", "surface-container-highest": "#e0e3e5",
+                        "surface-dim": "#d8dadc", "surface-container-high": "#e6e8ea", "secondary-fixed-dim": "#c0c6db",
+                        "outline-variant": "#e4beb9", "on-primary-container": "#ffbfb7", "on-secondary": "#ffffff",
+                        "secondary": "#575e70", "on-secondary-fixed": "#141b2b"
+                    },
+                    fontFamily: { "headline": ["Inter"], "body": ["Inter"], "label": ["Inter"] },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col relative" data-mode="connect">
+    
+    <a href="/" class="absolute top-5 left-5 sm:top-8 sm:left-8 flex items-center gap-2 text-on-surface-variant/70 hover:text-primary transition-all p-2 rounded-xl hover:bg-surface-container-low group z-50 focus:outline-none">
+        <i class="bi bi-arrow-left text-[28px] group-hover:-translate-x-1 transition-transform"></i>
+        <span class="text-sm font-bold tracking-tight hidden sm:block mt-0.5">Home</span>
+    </a>
+
+    <main class="flex-grow flex items-center justify-center px-4 py-6">
+        <div class="w-full max-w-2xl">
+            <div class="bg-surface-container-lowest rounded-xl relative overflow-hidden p-6 sm:p-8 border-2 border-outline/30 shadow-[0_35px_80px_rgba(25,28,30,0.12)]">
+                <div class="absolute top-0 left-0 w-full h-[3px] bg-primary"></div>
+                
+                <div class="flex flex-col items-center">
+                    <div class="flex items-center justify-center mb-2 w-40 overflow-hidden">
+                        <img src="https://lh3.googleusercontent.com/d/1tZlt5Hqgz9bTgp1odWAYW7rscMOI5TLp" alt="DYB Logo" class="w-full h-auto object-contain">
+                    </div>
+                    <h1 class="text-2xl font-extrabold tracking-tight text-on-surface mb-1">LOGIN</h1>
+                </div>
+
+                <div class="max-w-lg mx-auto mt-5">
+
+                    <div id="error-message" class="hidden mb-5 text-center">
+                        <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5 animate-pulse">
+                            <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                            <span id="error-text"></span>
+                        </p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1">Email</label>
+                        <div class="relative group tooltip-container">
+                            <div class="tooltip"><i class="bi bi-exclamation-triangle-fill text-amber-500"></i> If you previously signed in with email/password and then used Google login, your account has been switched to Google. Please use Google login going forward.</div>
+                            <i class="bi bi-person-fill absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                            <input name="username" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 focus:bg-surface-container-lowest transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="Enter your Email" type="email" required oninvalid="this.setCustomValidity('Please enter your email.')" oninput="this.setCustomValidity('')" onkeydown="if(event.key==='Enter') loginWithEmail(document.querySelector('[name=username]').value, document.querySelector('[name=password]').value)"/>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 mt-4 relative">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-on-surface/50 ml-1">Password</label>
+                        <div class="relative group">
+                            <i class="bi bi-key-fill absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                            <input id="password" name="password" class="w-full pl-12 pr-12 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 focus:bg-surface-container-lowest transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none hover:border-gray-400" placeholder="••••••••" type="password" required oninvalid="this.setCustomValidity('Please enter your password.')" oninput="this.setCustomValidity('')" onkeydown="if(event.key==='Enter') loginWithEmail(document.querySelector('[name=username]').value, document.querySelector('[name=password]').value)"/>
+                            <button type="button" onclick="togglePasswordVisibility()" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary focus:outline-none transition-colors z-10">
+                                <i id="eyeIcon" class="bi bi-eye-slash-fill text-xl"></i>
+                            </button>
+                        </div>
+                        <div id="capsLockWarning" class="absolute -bottom-6 left-1 text-[11px] font-bold text-orange-500 flex items-center gap-1 hidden transition-all">
+                            <i class="bi bi-exclamation-circle-fill text-[14px]"></i> Caps Lock is ON
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-7">
+                        <button id="btn-login" onclick="loginWithEmail(document.querySelector('[name=username]').value, document.querySelector('[name=password]').value)" class="btn-primary w-full h-[52px] bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                            <span class="text-base tracking-tight">Login</span>
+                        </button>
+
+                        <button id="btn-google" onclick="loginWithGoogle()" class="btn-secondary w-full h-[52px] bg-surface-container-lowest border-2 border-gray-300 rounded-lg flex items-center justify-center gap-2 group" type="button">
+                            <img alt="Google Logo" class="w-5 h-5 group-hover:scale-110 transition-transform" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"/>
+                            <div class="flex flex-col items-start leading-none text-left">
+                                <span class="text-sm font-semibold text-on-surface">Google</span>
+                                <span class="text-[10px] text-gray-500 mt-1">구글 계정으로 계속</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <button class="btn-secondary w-full h-[48px] bg-transparent border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center gap-2 group mt-3" type="button" onclick="window.location.href='/register'">
+                        <i class="bi bi-person-plus-fill text-gray-500 group-hover:text-primary transition-colors text-lg"></i>
+                        <span class="text-sm font-semibold text-gray-600">Register <span class="text-[11px] font-normal text-gray-400 ml-1">/ 회원가입</span></span>
+                    </button>
+                </div>
+
+                <div class="mt-5 pt-5 border-t border-gray-200 flex flex-col items-center gap-3 text-center">
+                    <p class="text-sm text-gray-600 leading-relaxed font-medium">
+                        Having trouble logging in?<br/>
+                        <span class="text-xs font-normal text-gray-500">Please contact the administrator for access issues.</span>
+                    </p>
+                    <button type="button" onclick="window.location.href='/find-account'" class="inline-flex items-center gap-2 px-4 py-2 text-primary text-sm font-bold border-2 border-primary/30 hover:border-primary hover:bg-primary/5 rounded-lg transition-all cursor-pointer focus:outline-none">
+                        <i class="bi bi-person-gear text-[18px]"></i>
+                        <span>Find my account</span>
+                    </button>
+                    <button type="button" onclick="copyEmailToClipboard('noreply@example.com', this)" class="inline-flex items-center gap-1.5 text-primary text-sm font-bold hover:opacity-80 transition-all bg-transparent border-none p-1 cursor-pointer focus:outline-none rounded">
+                        <i class="bi bi-clipboard text-base"></i>
+                        <span>noreply@example.com</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 직원 검증 팝업 모달 -->
+    <div id="staff-verify-modal" class="dyb-modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-outline/20 relative">
+            <div class="absolute top-0 left-0 w-full h-[3px] bg-primary rounded-t-xl"></div>
+            <div class="flex flex-col items-center mb-5">
+                <i class="bi bi-person-vcard text-primary text-[48px] mb-2"></i>
+                <h2 class="text-lg font-extrabold text-on-surface">Identity Verification</h2>
+                <p class="text-sm text-center text-gray-500 mt-1">Please enter your Employee ID and Passport Number to verify your identity.</p>
+            </div>
+            <div id="staff-verify-error" class="hidden mb-4 text-center">
+                <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                    <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                    <span id="staff-verify-error-text"></span>
+                </p>
+            </div>
+            <div class="space-y-3">
+                <div class="relative group">
+                    <i class="bi bi-person-vcard absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                    <input id="staff-emp-id" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none" placeholder="Employee ID" type="text" onkeydown="if(event.key==='Enter') submitStaffVerify()"/>
+                </div>
+                <div class="relative group">
+                    <i class="bi bi-compass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                    <input id="staff-passport" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none" placeholder="Passport Number" type="text" onkeydown="if(event.key==='Enter') submitStaffVerify()"/>
+                </div>
+            </div>
+            <button id="btn-staff-verify" onclick="submitStaffVerify()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                <span class="text-base tracking-tight">Verify</span>
+            </button>
+            <button onclick="closeStaffVerifyModal()" class="w-full mt-2 text-sm text-gray-400 hover:text-gray-600 transition-colors" type="button">Cancel</button>
+        </div>
+    </div>
+    </main>
+
+    <!-- OTP 팝업 모달 -->
+    <div id="otp-modal" class="dyb-modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-outline/20 relative">
+            <div class="absolute top-0 left-0 w-full h-[3px] bg-primary rounded-t-xl"></div>
+            <div class="flex flex-col items-center mb-5">
+                <i class="bi bi-envelope-check-fill text-primary text-[48px] mb-2"></i>
+                <h2 class="text-lg font-extrabold text-on-surface">Check your email</h2>
+                <p class="text-sm text-center text-gray-500 mt-1">We sent a 6-digit verification code.<br><span class="text-xs text-gray-400">Valid for 5 minutes.</span></p>
+            </div>
+            <div id="otp-error" class="hidden mb-4 text-center">
+                <p class="text-sm font-bold text-error flex items-center justify-center gap-1.5">
+                    <i class="bi bi-exclamation-circle-fill text-[18px]"></i>
+                    <span id="otp-error-text"></span>
+                </p>
+            </div>
+            <div class="relative group">
+                <i class="bi bi-pin-angle-fill absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary transition-colors z-10"></i>
+                <input id="otp-input" class="w-full pl-12 pr-4 bg-surface-container-low border-2 border-gray-300 rounded-lg focus:border-primary focus:ring-0 transition-all text-on-surface placeholder:text-gray-400 text-base h-[48px] outline-none tracking-widest text-center font-bold" placeholder="000000" type="text" maxlength="6" onkeydown="if(event.key==='Enter') submitOtp()"/>
+            </div>
+            <button id="btn-otp" onclick="submitOtp()" class="btn-primary w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg flex items-center justify-center shadow-md" type="button">
+                <span class="text-base tracking-tight">Verify</span>
+            </button>
+            <button onclick="closeOtpModal()" class="w-full mt-2 text-sm text-gray-400 hover:text-gray-600 transition-colors" type="button">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('reason') === 'force_logout') {
+                const errEl = document.getElementById('error-message');
+                const errTxt = document.getElementById('error-text');
+                if (errEl && errTxt) {
+                    errTxt.textContent = 'Your session has been terminated. Please log in again.';
+                    errEl.classList.remove('hidden');
+                }
+            }
+
+            const pwdInput = document.getElementById('password');
+            const capsWarning = document.getElementById('capsLockWarning');
+            ['keyup', 'keydown', 'mousedown'].forEach(evt => {
+                pwdInput.addEventListener(evt, function(event) {
+                    if (event.getModifierState && event.getModifierState('CapsLock')) {
+                        capsWarning.classList.remove('hidden');
+                    } else {
+                        capsWarning.classList.add('hidden');
+                    }
+                });
+            });
+        });
+
+        function copyEmailToClipboard(email, btn) {
+            navigator.clipboard.writeText(email).then(() => {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = `<i class="bi bi-check-circle-fill text-base text-green-600"></i> <span class="text-green-600">Copied!</span>`;
+                setTimeout(() => { btn.innerHTML = originalHtml; }, 2000);
+            }).catch(err => { console.error('Copy failed: ', err); });
+        }
+
+        function togglePasswordVisibility() {
+            const pwdInput = document.getElementById('password');
+            const eyeIcon = document.getElementById('eyeIcon');
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                eyeIcon.classList.remove('bi-eye-slash-fill');
+                eyeIcon.classList.add('bi-eye-fill');
+            } else {
+                pwdInput.type = 'password';
+                eyeIcon.classList.remove('bi-eye-fill');
+                eyeIcon.classList.add('bi-eye-slash-fill');
+            }
+        }
+    </script>
+    <script>
+        // Prevent FOUC from async CDN Tailwind — show body after styles are ready
+        window.addEventListener('load', function () {
+            document.body.style.transition = 'opacity 0.18s ease';
+            document.body.style.opacity = '1';
+        });
+    </script>
+</body>
+</html>

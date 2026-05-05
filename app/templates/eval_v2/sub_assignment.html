@@ -1,0 +1,734 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | SUB CTL 배정 — Assignment{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root {
+    --primary-dark: #870009;
+    --error: #ba1a1a;
+  }
+  .btn-primary {
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--strong-bg);color:var(--strong-bg-fg);font-weight:700;
+    border:1.5px solid var(--strong-bg);border-radius:3px;cursor:pointer;transition:all .15s;
+  }
+  .btn-primary:hover:not(:disabled){background:var(--primary-dark);border-color:var(--primary-dark);}
+  .btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-secondary {
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--surface-lowest);color:var(--text);font-weight:600;
+    border:1.5px solid var(--outline-variant);border-radius:3px;cursor:pointer;transition:all .15s;
+  }
+  .btn-secondary:hover:not(:disabled){border-color:var(--primary-dark);color:var(--primary-dark);}
+  .btn-secondary:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-danger {
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--surface-lowest);color:var(--danger);font-weight:600;
+    border:1.5px solid #fca5a5;border-radius:3px;cursor:pointer;transition:all .15s;
+  }
+  .btn-danger:hover:not(:disabled){border-color:var(--danger);}
+
+  input:not([type=checkbox]),select,textarea {
+    transition:border-color .15s;border-color:var(--outline-variant)!important;border-radius:3px;
+  }
+  input:not([type=checkbox]):focus,select:focus,textarea:focus {
+    outline:none;border-color:var(--primary-dark)!important;box-shadow:0 0 0 2px rgba(135,0,9,.08)!important;
+  }
+
+  /* 테이블 */
+  .sub-table th { padding:10px 14px; }
+  .sub-table td { padding:10px 14px; font-size:.875rem; }
+  .sub-table tr.selected td { background:var(--primary-soft); }
+
+  /* 배지 */
+  .badge { display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:3px;font-size:.7rem;font-weight:700;white-space:nowrap; }
+  .badge-assigned { background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe; }
+  .badge-unassigned { background:var(--surface-low);color:var(--text-muted);border:1px solid var(--outline-variant); }
+  .badge-pos-net { background:#f0fdf4;color:#15803d;border:1px solid #86efac; }
+  .badge-pos-stl { background:#fdf2f8;color:#9d174d;border:1px solid #fbcfe8; }
+  .badge-pos-tl  { background:#faf5ff;color:#6d28d9;border:1px solid #ddd6fe; }
+  .badge-pos-other { background:var(--surface-low);color:var(--on-surface-variant);border:1px solid var(--outline-variant); }
+
+  /* 필터 칩 */
+  .filter-chip {
+    padding:.25rem .75rem;border-radius:3px;
+    font-size:.75rem;font-weight:600;
+    border:1.5px solid var(--outline-variant);color:var(--on-surface-variant);
+    cursor:pointer;transition:all .15s;background:var(--surface-lowest);
+  }
+  .filter-chip:hover{border-color:var(--primary-dark);color:var(--primary-dark);}
+  .filter-chip.active{background:var(--strong-bg);border-color:var(--strong-bg);color:var(--strong-bg-fg);}
+
+  /* 모달 */
+  .modal-backdrop {
+    position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.4);
+    backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:16px;
+  }
+  .modal-box {
+    background:var(--surface);border-radius:4px;width:100%;max-height:88vh;overflow-y:auto;
+    overscroll-behavior:contain;box-shadow:0 8px 32px rgba(0,0,0,.12);
+    animation:modalIn .15s ease;border:1.5px solid var(--outline-variant);
+  }
+  @keyframes modalIn{from{opacity:0;transform:scale(.97) translateY(6px)}to{opacity:1;transform:none}}
+  .modal-header {
+    position:sticky;top:0;background:var(--surface);padding:18px 22px 14px;
+    border-bottom:1.5px solid var(--outline-variant);display:flex;
+    justify-content:space-between;align-items:flex-start;z-index:1;
+  }
+
+  /* bulk action bar */
+  #bulkBar {
+    position:sticky;top:64px;z-index:200;
+    background:var(--strong-bg);color:var(--strong-bg-fg);
+    border-radius:4px;padding:10px 16px;
+    display:none;align-items:center;gap:12px;flex-wrap:wrap;
+    margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.2);
+  }
+
+  /* 토스트 */
+  #toastContainer{pointer-events:none;position:fixed;top:80px;right:24px;z-index:99999;display:flex;flex-direction:column;gap:8px;}
+
+  /* 이력 타임라인 */
+  .history-item {
+    display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--outline-variant);
+  }
+  .history-item:last-child{border-bottom:none;}
+  .history-dot {
+    width:10px;height:10px;border-radius:50%;background:var(--primary);
+    flex-shrink:0;margin-top:5px;
+  }
+
+  input[type=checkbox]{accent-color:var(--primary);}
+
+  /* 툴팁 — design intent navy fixed (양쪽 모드) */
+  .tt{position:relative;}
+  .tt::after{
+    content:attr(data-tip);
+    position:absolute;top:calc(100% + 10px);left:50%;transform:translateX(-50%);
+    background:#1e3a5f;color:#e0f0ff;font-size:11px;font-weight:500;line-height:1.6;
+    padding:9px 13px;border-radius:10px;border:1.5px solid #3b82f6;
+    white-space:pre-wrap;max-width:260px;min-width:140px;text-align:left;
+    pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;
+    box-shadow:0 6px 20px rgba(0,0,0,.35);
+  }
+  .tt::before{
+    content:'';position:absolute;top:calc(100% + 3px);left:50%;transform:translateX(-50%);
+    border:6px solid transparent;border-bottom-color:#3b82f6;
+    pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;
+  }
+  .tt:hover::after,.tt:hover::before{opacity:1;}
+
+  /* 다크 모드 시맨틱 변형 */
+  html[data-theme="dark"] .badge-assigned   { background:rgba(59,130,246,.16); color:#93c5fd; border-color:rgba(59,130,246,.40); }
+  html[data-theme="dark"] .badge-pos-net    { background:rgba(34,197,94,.16);  color:#86efac; border-color:rgba(34,197,94,.40); }
+  html[data-theme="dark"] .badge-pos-stl    { background:rgba(236,72,153,.16); color:#f9a8d4; border-color:rgba(236,72,153,.40); }
+  html[data-theme="dark"] .badge-pos-tl     { background:rgba(139,92,246,.16); color:#c4b5fd; border-color:rgba(139,92,246,.40); }
+  html[data-theme="dark"] .btn-danger       { color:#fca5a5; border-color:rgba(220,38,38,.45); }
+  html[data-theme="dark"] .btn-danger:hover:not(:disabled) { border-color:#fca5a5; }
+  /* Tailwind 시맨틱 유틸리티 다크 (페이지 사용분만) */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50     { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500  { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200,
+  html[data-theme="dark"] .border-gray-300 { border-color: var(--border) !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[1300px] mx-auto pb-10 px-2 sm:px-4 mt-2">
+
+  <!-- 헤더 -->
+  <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-person-lines-fill" style="color:var(--primary)"></i> SUB CTL 배정
+        <span class="text-[10px] opacity-60 font-normal ml-1">Assignment</span>
+        <span class="text-sm font-bold text-white px-2.5 py-0.5 rounded-full ml-1" style="background:var(--primary)">v2</span>
+      </h1>
+      <p class="text-sm mt-1" style="color:var(--on-surface-variant)">SUB 강사 캠퍼스 TL 배정 <span class="text-[10px] opacity-60 font-normal">— Campus TL Assignment</span> <span class="text-xs opacity-60">— 관리자 전용 <span class="text-[10px] font-normal">Admin Only</span></span></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <button onclick="loadTeachers()" class="btn-secondary px-3 py-2.5 tt" data-tip="Firestore에서 SUB 강사 목록을 새로고침합니다.&#10;Refresh the SUB teacher list from Firestore." style="position:relative;z-index:100;">
+        <i class="bi bi-arrow-clockwise text-base"></i>
+      </button>
+      <span id="summaryBadge" class="hidden text-xs font-bold px-3 py-1.5 rounded-full" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac">
+        <i class="bi bi-check-circle-fill mr-1"></i><span id="summaryText"></span>
+      </span>
+    </div>
+  </div>
+
+  <!-- 세션(회차) 드롭다운 -->
+  <div class="flex items-center gap-3 mb-4 p-3 rounded-xl" style="background:var(--surface-low);border:1.5px solid var(--outline-variant)">
+    <i class="bi bi-calendar3" style="color:var(--primary);font-size:18px"></i>
+    <div class="flex-1">
+      <label class="text-xs font-bold block" style="color:var(--on-surface-variant)">평가 회차 <span class="text-[10px] opacity-60 font-normal">Session</span></label>
+      <select id="sessionSelect" onchange="onSessionChange()"
+        class="w-full text-sm font-bold px-3 py-2 border-2 rounded-lg focus:outline-none mt-1"
+        style="background:var(--surface-lowest);border-color:var(--outline-variant);color:var(--on-surface);max-width:360px">
+        <option value="" disabled selected>— 불러오는 중… Loading… —</option>
+      </select>
+    </div>
+    <span id="sessionBadge" class="hidden text-[10px] font-bold px-2 py-1 rounded-full" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe">Session Mode</span>
+  </div>
+
+  <!-- 검색 & 필터 -->
+  <div class="flex flex-col sm:flex-row gap-3 mb-4">
+    <div class="relative flex-1 max-w-xs">
+      <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-sm" style="color:var(--outline)"></i>
+      <input type="text" id="searchInput" placeholder="이름 또는 사번으로 검색… / Name or Employee ID" oninput="applyFilters()"
+        class="w-full pl-9 pr-4 py-2.5 border-2 rounded-xl text-sm font-medium focus:outline-none"
+        style="background:var(--surface-lowest);border-color:var(--outline-variant);color:var(--on-surface)">
+    </div>
+    <div class="flex flex-wrap gap-2 items-center">
+      <button class="filter-chip active" data-filter="all" onclick="setFilter(this,'all')">전체 <span class="text-[10px] opacity-60 font-normal">All</span></button>
+      <button class="filter-chip" data-filter="unassigned" onclick="setFilter(this,'unassigned')">미배정만 <span class="text-[10px] opacity-60 font-normal">Unassigned</span></button>
+      <button class="filter-chip" data-filter="assigned" onclick="setFilter(this,'assigned')">배정됨만 <span class="text-[10px] opacity-60 font-normal">Assigned</span></button>
+    </div>
+  </div>
+
+  <!-- Bulk Action Bar -->
+  <div id="bulkBar">
+    <i class="bi bi-check2-square text-lg"></i>
+    <span id="bulkCount" class="text-sm font-bold">0 selected</span>
+    <div class="flex items-center gap-2 ml-auto flex-wrap">
+      <select id="bulkCampusSelect"
+        class="text-sm font-bold px-3 py-2 rounded-lg border-2 focus:outline-none min-w-[160px]"
+        style="background:var(--surface-lowest);border-color:var(--outline-variant);color:var(--text-strong)">
+        <option value="">— 캠퍼스 선택 / Select Campus —</option>
+        <option value="CMA">Campus A (CMA)</option>
+        <option value="CMB">Campus B (CMB)</option>
+        <option value="CMC">Campus C (CMC)</option>
+        <option value="CMD">Campus D (CMD)</option>
+        <option value="CME">Campus E (CME)</option>
+        <option value="CMF">Campus F (CMF)</option>
+        <option value="CMG">Campus G (CMG)</option>
+        <option value="CMH">Campus H (CMH)</option>
+        <option value="CMI">Campus I (CMI)</option>
+        <option value="CMJ">Campus J (CMJ)</option>
+        <option value="CMK">Campus K (CMK)</option>
+        <option value="CML">Campus L (CML)</option>
+        <option value="CMM">Campus M (CMM)</option>
+        <option value="">미배정 (Unassign)</option>
+      </select>
+      <button onclick="bulkAssign()" id="bulkAssignBtn" class="btn-primary px-4 py-2 text-sm">
+        <i class="bi bi-check"></i> 배정 <span class="text-[10px] opacity-60 font-normal">Assign</span>
+      </button>
+      <button onclick="clearSelection()" class="btn-secondary px-4 py-2 text-sm" style="border-color:var(--outline-variant);color:var(--strong-bg-fg);background:transparent;opacity:.85">
+        <i class="bi bi-x-lg"></i> 취소 <span class="text-[10px] opacity-60 font-normal">Cancel</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 테이블 -->
+  <div class="dyb-table-card">
+    <div class="dyb-table-stripe"></div>
+    <div class="dyb-table-header">
+      <i class="bi bi-people-fill"></i>
+      <span class="dyb-table-header-title">선생님 목록 <span class="text-[10px] opacity-60 font-normal">Teacher List</span></span>
+    </div>
+    <div id="tableLoading" class="flex items-center gap-3 py-12 justify-center" style="color:var(--outline)">
+      <div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+      <span class="text-sm">불러오는 중… <span class="text-[10px] opacity-60 font-normal">Loading…</span></span>
+    </div>
+    <table class="sub-table dyb-table hidden" id="mainTable">
+      <thead>
+        <tr>
+          <th style="width:40px">
+            <input type="checkbox" id="selectAllChk" onchange="toggleSelectAll(this.checked)" class="w-4 h-4">
+          </th>
+          <th>이름 <span class="text-[10px] opacity-50 font-normal">Name</span></th>
+          <th>사번 <span class="text-[10px] opacity-50 font-normal">ID</span></th>
+          <th>직책 <span class="text-[10px] opacity-50 font-normal">Role</span></th>
+          <th>배정 캠퍼스 <span class="text-[10px] opacity-50 font-normal">Campus</span></th>
+          <th>최근 수정 <span class="text-[10px] opacity-50 font-normal">Last Updated</span></th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyMsg" class="hidden py-12 text-center text-sm" style="color:var(--outline)">
+      <i class="bi bi-person-x text-3xl mb-2 block"></i>선생님이 없습니다. <span class="text-[10px] opacity-60 font-normal">No teachers found.</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── 이력 모달 ── -->
+<div id="historyModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('historyModal')">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-header">
+      <div>
+        <h2 class="text-lg font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+          <i class="bi bi-clock-history" style="color:var(--primary)"></i> 배정 이력 <span class="text-[10px] opacity-60 font-normal">Assignment History</span>
+        </h2>
+        <p id="historySubtitle" class="text-sm mt-0.5" style="color:var(--on-surface-variant)">배정 변경 내역 <span class="text-[10px] opacity-60 font-normal">Change Log</span></p>
+      </div>
+      <button onclick="closeModal('historyModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg" style="background:var(--surface-low);color:var(--on-surface-variant)">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div id="historyBody" class="p-5">
+      <div class="flex items-center gap-3 py-6 justify-center" style="color:var(--outline)">
+        <div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+        <span class="text-sm">불러오는 중...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 빠른 배정 모달 ── -->
+<div id="quickAssignModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('quickAssignModal')">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-header">
+      <h3 class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-person-check-fill" style="color:var(--primary)"></i> 캠퍼스 배정 <span class="text-[10px] opacity-60 font-normal">Campus Assignment</span>
+      </h3>
+      <button onclick="closeModal('quickAssignModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg" style="background:var(--surface-low);color:var(--on-surface-variant)">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+      <p id="quickAssignName" class="text-sm font-bold" style="color:var(--on-surface)"></p>
+      <div>
+        <label class="text-xs font-bold block mb-1.5" style="color:var(--on-surface-variant)">캠퍼스 <span class="text-[10px] opacity-60 font-normal">Campus</span></label>
+        <select id="quickCampusSelect"
+          class="w-full text-sm font-bold px-3 py-2.5 border-2 rounded-xl focus:outline-none"
+          style="background:var(--surface-lowest);border-color:var(--outline-variant);color:var(--on-surface)">
+          <option value="">미배정 (Unassign)</option>
+          <option value="CMA">Campus A (CMA)</option>
+          <option value="CMB">Campus B (CMB)</option>
+          <option value="CMC">Campus C (CMC)</option>
+          <option value="CMD">Campus D (CMD)</option>
+          <option value="CME">Campus E (CME)</option>
+          <option value="CMF">Campus F (CMF)</option>
+          <option value="CMG">Campus G (CMG)</option>
+          <option value="CMH">Campus H (CMH)</option>
+          <option value="CMI">Campus I (CMI)</option>
+          <option value="CMJ">Campus J (CMJ)</option>
+          <option value="CMK">Campus K (CMK)</option>
+          <option value="CML">Campus L (CML)</option>
+          <option value="CMM">Campus M (CMM)</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-bold block mb-1.5" style="color:var(--on-surface-variant)">Note (optional)</label>
+        <input type="text" id="quickNoteInput" placeholder="Reason or memo..."
+          class="w-full text-sm px-3 py-2.5 border-2 rounded-xl focus:outline-none"
+          style="border-color:var(--outline-variant)">
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button onclick="closeModal('quickAssignModal')" class="btn-secondary flex-1 py-2.5 text-sm rounded-xl justify-center">Cancel</button>
+        <button onclick="submitQuickAssign()" class="btn-primary flex-1 py-2.5 text-sm rounded-xl justify-center">
+          <i class="bi bi-check"></i> Assign
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const CAMPUS_KO = {
+  'CMA':'Campus A','CMB':'Campus B','CMC':'Campus C','CMD':'Campus D','CME':'Campus E','CMF':'Campus F',
+  'CMG':'Campus G','CMH':'Campus H','CMI':'Campus I','CMJ':'Campus J','CMK':'Campus K','CML':'Campus L','CMM':'Campus M'
+};
+
+let allTeachers = [];
+let activeFilter = 'all';
+let selectedIds = new Set();
+let quickAssignEmpId = '';
+let currentSessionId = '';
+
+// ── 초기화 ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadSessions();
+  const tbody = document.getElementById('tableBody');
+  if (tbody) {
+    tbody.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const empId = btn.dataset.empId || '';
+      const name = btn.dataset.name || '';
+      if (action === 'edit') {
+        openQuickAssign(empId, name, btn.dataset.campus || '');
+      } else if (action === 'history') {
+        openHistory(empId, name);
+      }
+    });
+    tbody.addEventListener('change', (e) => {
+      const chk = e.target.closest('input.row-chk');
+      if (chk) onRowCheck(chk);
+    });
+  }
+});
+
+// ── 세션 드롭다운 ─────────────────────────────────────────────────────────
+async function loadSessions() {
+  const sel = document.getElementById('sessionSelect');
+  try {
+    const res = await fetch('/api/v2/sub-ctl/sessions');
+    const json = await res.json();
+    sel.innerHTML = '';
+    if (json.status !== 'SUCCESS' || !(json.sessions || []).length) {
+      sel.innerHTML = '<option value="" disabled selected>— 회차 없음 / No Sessions —</option>';
+      document.getElementById('tableLoading').style.display = 'none';
+      document.getElementById('emptyMsg').classList.remove('hidden');
+      return;
+    }
+    (json.sessions || []).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      const statusIcon = s.status === 'active' ? '●' : '■';
+      opt.textContent = `${s.label} ${statusIcon}`;
+      sel.appendChild(opt);
+    });
+    // 첫 번째 회차 자동 선택
+    sel.value = json.sessions[0].id;
+    currentSessionId = json.sessions[0].id;
+    document.getElementById('sessionBadge').classList.remove('hidden');
+    loadTeachers();
+  } catch(e) {
+    console.error('loadSessions error', e);
+    sel.innerHTML = '<option value="" disabled selected>— 로드 실패 / Load Failed —</option>';
+  }
+}
+
+function onSessionChange() {
+  const sel = document.getElementById('sessionSelect');
+  currentSessionId = sel.value;
+  const badge = document.getElementById('sessionBadge');
+  badge.classList.toggle('hidden', !currentSessionId);
+  if (currentSessionId) loadTeachers();
+}
+
+// ── 데이터 로드 ──────────────────────────────────────────────────────────────
+async function loadTeachers() {
+  document.getElementById('tableLoading').style.display = 'flex';
+  document.getElementById('mainTable').classList.add('hidden');
+  document.getElementById('emptyMsg').classList.add('hidden');
+  clearSelection();
+
+  try {
+    let url = '/api/v2/sub-ctl/list';
+    if (currentSessionId) url += '?session_id=' + encodeURIComponent(currentSessionId);
+    const res = await fetch(url);
+    const json = await res.json();
+    if (json.status !== 'SUCCESS') throw new Error(json.message);
+    allTeachers = json.data;
+    renderSummary();
+    applyFilters();
+  } catch (e) {
+    showToast('Failed to load: ' + e.message, 'error');
+  } finally {
+    document.getElementById('tableLoading').style.display = 'none';
+  }
+}
+
+function renderSummary() {
+  const assigned = allTeachers.filter(t => t.assigned_campus).length;
+  const total = allTeachers.length;
+  document.getElementById('summaryText').textContent = `${assigned} / ${total} assigned`;
+  document.getElementById('summaryBadge').classList.remove('hidden');
+}
+
+// ── 필터 & 렌더 ──────────────────────────────────────────────────────────────
+function setFilter(btn, val) {
+  document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilter = val;
+  applyFilters();
+}
+
+function applyFilters() {
+  const search = document.getElementById('searchInput').value.trim().toLowerCase();
+  let list = allTeachers;
+  if (activeFilter === 'unassigned') list = list.filter(t => !t.assigned_campus);
+  if (activeFilter === 'assigned')   list = list.filter(t =>  t.assigned_campus);
+  if (search) {
+    list = list.filter(t =>
+      t.name.toLowerCase().includes(search) ||
+      t.emp_id.toLowerCase().includes(search) ||
+      (t.nickname || '').toLowerCase().includes(search)
+    );
+  }
+  renderTable(list);
+}
+
+function renderTable(list) {
+  const tbody = document.getElementById('tableBody');
+  const table = document.getElementById('mainTable');
+  const empty = document.getElementById('emptyMsg');
+
+  if (!list.length) {
+    table.classList.add('hidden');
+    empty.classList.remove('hidden');
+    return;
+  }
+  table.classList.remove('hidden');
+  empty.classList.add('hidden');
+
+  tbody.innerHTML = list.map(t => {
+    const isSelected = selectedIds.has(t.emp_id);
+    const isDefault = t.is_default && currentSessionId;
+    const campusBadge = t.assigned_campus
+      ? `<span class="badge badge-assigned" ${isDefault ? 'style="opacity:.5"' : ''}><i class="bi bi-geo-alt-fill"></i>${CAMPUS_KO[t.assigned_campus] || t.assigned_campus} (${t.assigned_campus})${isDefault ? ' <span class="text-[9px] opacity-70">(default)</span>' : ''}</span>`
+      : `<span class="badge badge-unassigned"><i class="bi bi-dash-circle"></i>미배정</span>`;
+
+    const pos = (t.position || '').toUpperCase();
+    let posClass = 'badge-pos-other';
+    if (pos === 'STL') posClass = 'badge-pos-stl';
+    else if (pos === 'TL') posClass = 'badge-pos-tl';
+    else if (pos === 'NET' || pos === 'GS') posClass = 'badge-pos-net';
+    const posBadge = pos ? `<span class="badge ${posClass}">${pos}</span>` : '<span class="text-xs" style="color:var(--outline)">—</span>';
+
+    const updatedAt = t.assigned_at ? formatDate(t.assigned_at) : '—';
+    const assignedBy = t.assigned_by ? `<span class="text-[10px]" style="color:var(--outline)">by ${t.assigned_by}</span>` : '';
+
+    const nameEsc = escapeHtml(t.name || '');
+    const displayName = t.nickname && t.nickname !== t.name
+      ? `${nameEsc} <span class="text-xs font-normal" style="color:var(--outline)">(${escapeHtml(t.nickname)})</span>`
+      : nameEsc;
+
+    const empIdEsc = escapeHtml(t.emp_id || '');
+    const campusAttr = t.assigned_campus ? escapeHtml(t.assigned_campus) : '';
+
+    return `<tr class="${isSelected ? 'selected' : ''}" data-emp-id="${empIdEsc}">
+      <td><input type="checkbox" class="row-chk w-4 h-4" data-id="${empIdEsc}" ${isSelected ? 'checked' : ''}></td>
+      <td><span class="font-semibold text-sm" style="color:var(--on-surface)">${displayName}</span></td>
+      <td><code class="text-xs font-bold px-1.5 py-0.5 rounded" style="background:var(--surface-low);color:var(--on-surface-variant)">${empIdEsc}</code></td>
+      <td>${posBadge}</td>
+      <td>${campusBadge}</td>
+      <td class="text-xs" style="color:var(--on-surface-variant)">${updatedAt}<br>${assignedBy}</td>
+      <td>
+        <div class="flex items-center gap-1.5">
+          <button type="button"
+            data-action="edit"
+            data-emp-id="${empIdEsc}"
+            data-name="${nameEsc}"
+            data-campus="${campusAttr}"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border transition-colors tt"
+            style="border-color:var(--outline-variant);color:var(--outline)"
+            data-tip="Edit assignment">
+            <i class="bi bi-pencil-fill text-xs"></i>
+          </button>
+          <button type="button"
+            data-action="history"
+            data-emp-id="${empIdEsc}"
+            data-name="${nameEsc}"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border transition-colors tt"
+            style="border-color:var(--outline-variant);color:var(--outline)"
+            data-tip="View history">
+            <i class="bi bi-clock-history text-xs"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ── 선택 관리 ────────────────────────────────────────────────────────────────
+function onRowCheck(chk) {
+  const id = chk.dataset.id;
+  const row = chk.closest('tr');
+  if (chk.checked) { selectedIds.add(id); row.classList.add('selected'); }
+  else { selectedIds.delete(id); row.classList.remove('selected'); }
+  updateBulkBar();
+  syncSelectAllState();
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.row-chk').forEach(chk => {
+    const id = chk.dataset.id;
+    chk.checked = checked;
+    const row = chk.closest('tr');
+    if (checked) { selectedIds.add(id); row.classList.add('selected'); }
+    else { selectedIds.delete(id); row.classList.remove('selected'); }
+  });
+  updateBulkBar();
+}
+
+function syncSelectAllState() {
+  const all = document.querySelectorAll('.row-chk');
+  const checked = document.querySelectorAll('.row-chk:checked');
+  const chk = document.getElementById('selectAllChk');
+  if (!chk) return;
+  chk.indeterminate = checked.length > 0 && checked.length < all.length;
+  chk.checked = all.length > 0 && checked.length === all.length;
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.row-chk').forEach(c => { c.checked = false; });
+  document.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
+  const chk = document.getElementById('selectAllChk');
+  if (chk) { chk.checked = false; chk.indeterminate = false; }
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  const n = selectedIds.size;
+  document.getElementById('bulkCount').textContent = `${n} selected`;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+}
+
+// ── 일괄 배정 ────────────────────────────────────────────────────────────────
+async function bulkAssign() {
+  const campus = document.getElementById('bulkCampusSelect').value;
+  const ids = Array.from(selectedIds);
+  if (!ids.length) return;
+
+  const campusLabel = campus ? `${CAMPUS_KO[campus] || campus} (${campus})` : '미배정';
+  const confirmed = confirm(`${ids.length}명을 "${campusLabel}"로 배정하시겠습니까?`);
+  if (!confirmed) return;
+
+  const btn = document.getElementById('bulkAssignBtn');
+  btn.disabled = true; btn.innerHTML = '<div class="w-4 h-4 rounded-full animate-spin" style="border:2px solid rgba(255,255,255,.3);border-top-color:#fff"></div> Saving...';
+
+  try {
+    const res = await fetch('/api/v2/sub-ctl/assign', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ emp_ids: ids, campus, note: '', session_id: currentSessionId })
+    });
+    const json = await res.json();
+    if (json.status !== 'SUCCESS') throw new Error(json.message);
+    showToast(`${json.updated}명 배정 완료 → ${campusLabel}`, 'success');
+    clearSelection();
+    await loadTeachers();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-check"></i> Assign';
+  }
+}
+
+// ── 빠른 배정 (개별) ─────────────────────────────────────────────────────────
+function openQuickAssign(empId, name, currentCampus) {
+  quickAssignEmpId = empId;
+  document.getElementById('quickAssignName').innerHTML =
+    `<i class="bi bi-person-fill mr-1" style="color:var(--primary)"></i>${name} <code class="text-xs px-1.5 py-0.5 rounded ml-1" style="background:var(--surface-low)">${empId}</code>`;
+  document.getElementById('quickCampusSelect').value = currentCampus || '';
+  document.getElementById('quickNoteInput').value = '';
+  document.getElementById('quickAssignModal').style.display = 'flex';
+}
+
+async function submitQuickAssign() {
+  const campus = document.getElementById('quickCampusSelect').value;
+  const note   = document.getElementById('quickNoteInput').value.trim();
+
+  try {
+    const res = await fetch('/api/v2/sub-ctl/assign', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ emp_ids: [quickAssignEmpId], campus, note, session_id: currentSessionId })
+    });
+    const json = await res.json();
+    if (json.status !== 'SUCCESS') throw new Error(json.message);
+    const label = campus ? `${CAMPUS_KO[campus] || campus} (${campus})` : '미배정';
+    showToast(`배정 완료 → ${label}`, 'success');
+    closeModal('quickAssignModal');
+    await loadTeachers();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── 이력 모달 ────────────────────────────────────────────────────────────────
+async function openHistory(empId, name) {
+  document.getElementById('historySubtitle').textContent = `${name} (${empId})`;
+  document.getElementById('historyBody').innerHTML = `
+    <div class="flex items-center gap-3 py-6 justify-center" style="color:var(--outline)">
+      <div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+      <span class="text-sm">불러오는 중...</span>
+    </div>`;
+  document.getElementById('historyModal').style.display = 'flex';
+
+  try {
+    const res = await fetch(`/api/v2/sub-ctl/history?emp_id=${encodeURIComponent(empId)}`);
+    const json = await res.json();
+    if (json.status !== 'SUCCESS') throw new Error(json.message);
+    renderHistory(json.data);
+  } catch (e) {
+    document.getElementById('historyBody').innerHTML =
+      `<p class="text-sm text-center py-6" style="color:var(--error)">Error: ${e.message}</p>`;
+  }
+}
+
+function renderHistory(history) {
+  if (!history.length) {
+    document.getElementById('historyBody').innerHTML =
+      `<div class="py-8 text-center text-sm" style="color:var(--outline)">
+        <i class="bi bi-clock-history text-2xl mb-2 block"></i>배정 이력이 없습니다.
+      </div>`;
+    return;
+  }
+
+  document.getElementById('historyBody').innerHTML = `
+    <div class="space-y-0">
+      ${history.map((h, i) => {
+        const prev = h.prev_campus ? `${CAMPUS_KO[h.prev_campus] || h.prev_campus} (${h.prev_campus})` : '미배정';
+        const curr = h.campus     ? `${CAMPUS_KO[h.campus]      || h.campus}      (${h.campus})`      : '미배정';
+        const isLatest = i === 0;
+        return `<div class="history-item">
+          <div class="history-dot mt-1.5 ${isLatest ? '' : 'opacity-40'}"></div>
+          <div class="flex-1">
+            <div class="flex items-center gap-2 flex-wrap mb-1">
+              <span class="text-xs font-bold px-2 py-0.5 rounded" style="background:var(--surface-low);color:var(--on-surface-variant)">${prev}</span>
+              <i class="bi bi-arrow-right text-xs" style="color:var(--outline)"></i>
+              <span class="text-xs font-bold px-2 py-0.5 rounded ${h.campus ? 'badge-assigned' : 'badge-unassigned'}" style="display:inline-block">${curr}</span>
+              ${isLatest ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:#dcfce7;color:#15803d;border:1px solid #86efac">Latest</span>' : ''}
+            </div>
+            <p class="text-xs" style="color:var(--on-surface-variant)">
+              <i class="bi bi-person mr-1"></i>${h.assigned_by || '—'}
+              <span class="mx-1 opacity-40">·</span>
+              <i class="bi bi-calendar3 mr-1"></i>${h.assigned_at ? h.assigned_at.slice(0,16) : '—'}
+            </p>
+            ${h.note ? `<p class="text-xs mt-0.5 italic" style="color:var(--outline)">"${h.note}"</p>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ── 유틸 ────────────────────────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function formatDate(str) {
+  if (!str) return '—';
+  return str.slice(0, 16).replace('T', ' ');
+}
+
+function showToast(msg, type = 'success') {
+  const container = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  const bg = type === 'success' ? 'var(--success)' : type === 'info' ? 'var(--info)' : 'var(--primary)';
+  const bd = type === 'success' ? '#047857'        : type === 'info' ? '#1d4ed8'    : 'var(--primary-dark, #7a0b0f)';
+  const ic = type === 'success' ? 'check-circle-fill' : type === 'info' ? 'info-circle-fill' : 'exclamation-circle-fill';
+  t.style.cssText = `pointer-events:auto;display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:.875rem;font-weight:600;color:#fff;min-width:260px;max-width:380px;line-height:1.4;opacity:0;transform:translateX(24px);transition:all .25s;background:${bg};border:1.5px solid ${bd};`;
+  t.innerHTML = `<i class="bi bi-${ic}" style="flex-shrink:0;margin-top:2px"></i><span style="flex:1">${msg}</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;padding:0;margin-left:4px;font-size:1rem;line-height:1;flex-shrink:0">×</button>`;
+  container.appendChild(t);
+  requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translateX(0)'; });
+  setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(24px)'; setTimeout(() => t.remove(), 280); }, type === 'error' ? 5000 : 3500);
+}
+</script>
+{% endblock %}

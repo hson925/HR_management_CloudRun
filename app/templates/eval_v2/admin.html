@@ -1,0 +1,1513 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | 평가 v2 — 세션 & 설정{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dyb-datepicker.css') }}">
+<script src="{{ url_for('static', filename='js/dyb-datepicker.js') }}"></script>
+<style>
+  /* ── 디자인 토큰 (페이지-local) ──
+     CSS 명세상 `--x: var(--x)` 자기참조는 cycle 로 invalid 처리되므로
+     tokens.css :root 가 정의해 두는 토큰은 여기서 재선언하지 않는다.
+     아래는 admin 페이지에만 필요한 page-local 정의만 남김.
+     중립/표면/legacy 토큰은 layout 의 tokens.css 가 라이트/다크 양쪽 제공. */
+  :root {
+    --primary-dark: #870009;
+    --primary-container: #b01116;
+    /* --primary-soft 은 tokens.css 가 라이트(.06) / 다크(.12) 매핑 — 로컬 재정의 제거. */
+    --error: #ba1a1a;
+  }
+
+  /* ── 탭 버튼 ── */
+  .tab-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: .5rem 1.1rem; border-radius: 3px;
+    font-size: .875rem; font-weight: 700;
+    color: var(--on-surface-variant); border: 1.5px solid transparent;
+    cursor: pointer; transition: all .15s; white-space: nowrap; background: transparent;
+  }
+  .tab-btn:hover { color: var(--on-surface); background: var(--surface-low); border-color: var(--outline-variant); }
+  .tab-btn.active { background: var(--strong-bg); color: #fff; border-color: var(--strong-bg); box-shadow: none; }
+  /* Save All 버튼 spinner — saveConfig 진행 중 회전 (PurgeCSS 영향 없는 page-local keyframe) */
+  @keyframes cfgSaveSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .cfg-save-icon.bi-arrow-repeat { animation: cfgSaveSpin 1s linear infinite; display: inline-block; }
+
+  /* ── 필터 칩 ── */
+  .filter-chip {
+    padding: .25rem .75rem; border-radius: 3px;
+    font-size: .75rem; font-weight: 600;
+    border: 1.5px solid var(--outline-variant); color: var(--on-surface-variant);
+    cursor: pointer; transition: all .15s; background: var(--surface-lowest);
+  }
+  .filter-chip:hover { border-color: var(--primary); color: var(--primary); background: var(--surface-lowest); }
+  .filter-chip.active { background: var(--strong-bg); border-color: var(--strong-bg); color: #fff; box-shadow: none; }
+
+  /* ── type 버튼 (Settings) ── */
+  .type-btn {
+    padding: .35rem 1rem; border-radius: 3px;
+    font-size: .8rem; font-weight: 600;
+    border: 1.5px solid var(--outline-variant); color: var(--on-surface-variant);
+    cursor: pointer; transition: all .15s; background: var(--surface-lowest);
+  }
+  .type-btn:hover { border-color: var(--primary); color: var(--primary); }
+  .type-btn.active { background: var(--strong-bg); border-color: var(--strong-bg); color: #fff; }
+
+  /* ── btn-primary ── */
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--strong-bg);
+    color: #fff; font-weight: 700; border: 1.5px solid var(--strong-bg);
+    border-radius: 3px; cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); }
+  .btn-primary:active:not(:disabled) { opacity: .85; }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── btn-secondary ── */
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-lowest); color: var(--text); font-weight: 600;
+    border: 1.5px solid var(--outline-variant); border-radius: 3px;
+    cursor: pointer; transition: all .15s;
+  }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--surface-lowest); box-shadow: none; transform: none; }
+  .btn-secondary:active:not(:disabled) { opacity: .85; }
+  .btn-secondary:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── btn-danger ── */
+  .btn-danger {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-lowest); color: #dc2626; font-weight: 600;
+    border: 1.5px solid #fca5a5; border-radius: 3px;
+    cursor: pointer; transition: all .15s;
+  }
+  .btn-danger:hover:not(:disabled) { background: var(--surface-lowest); border-color: #dc2626; }
+  .btn-danger:active:not(:disabled) { opacity: .85; }
+
+  /* ── 인풋/셀렉트 공통 ── */
+  input:not([type=range]):not([type=checkbox]):not(.weight-input):not(.mincount-input),
+  select, textarea {
+    transition: border-color .15s;
+    border-color: var(--outline-variant) !important;
+    border-radius: 3px;
+  }
+  input:not([type=range]):not([type=checkbox]):not(.weight-input):not(.mincount-input):focus,
+  select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px var(--primary-soft) !important;
+  }
+
+  /* ── 카드 ── */
+  .campus-card { background: var(--surface-lowest); border: 1.5px solid var(--outline-variant); border-radius: 4px; overflow: hidden; box-shadow: none; transition: border-color .15s; }
+  .campus-card:hover { border-color: var(--outline); box-shadow: none; }
+  .campus-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: var(--surface-low); border-bottom: 1.5px solid var(--outline-variant); cursor: pointer; user-select: none; }
+  .campus-header:hover { background: var(--surface-low-hover); }
+
+  .teacher-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 14px; border-radius: 3px; border: 1.5px solid var(--outline-variant); background: var(--surface-lowest); gap: 12px; cursor: pointer; transition: border-color .15s; flex-wrap: wrap; }
+  .teacher-row .teacher-info { min-width: 0; flex: 1 1 180px; }
+  .teacher-row .teacher-status { flex-shrink: 0; flex-wrap: wrap; display: flex; gap: 6px; align-items: center; justify-content: flex-end; max-width: 55%; }
+  .teacher-row:hover { border-color: var(--primary); background: var(--surface-lowest); box-shadow: none; transform: none; }
+  .teacher-row.done { border-color: #86efac; background: #f0fdf4; }
+  .teacher-row.done:hover { border-color: #22c55e; box-shadow: none; }
+
+  /* ── 배지 ── */
+  .badge-done { background: #f0fdf4; color: #15803d; border: 1.5px solid #86efac; font-weight: 700; }
+  .badge-pending { background: #fefce8; color: #854d0e; border: 1.5px solid #fde047; font-weight: 700; }
+  .badge-inprogress { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #93c5fd; font-weight: 700; }
+  .badge-over { background: #faf5ff; color: #6d28d9; border: 1.5px solid #c4b5fd; font-weight: 700; }
+  .badge-type-position { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .badge-type-regular { background: var(--surface-low); color: var(--on-surface-variant); border: 1px solid var(--outline-variant); }
+  .badge-type-tl { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+  .badge-type-sub { background: #fefce8; color: #713f12; border: 1px solid #fde68a; }
+  .badge-type-stl { background: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8; }
+
+  /* ── 모달 ── (backdrop 은 layout.html 의 공통 CSS 사용) */
+  .modal-box { background: var(--surface-lowest); border-radius: 4px; width: 100%; max-height: 88vh; overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 8px 32px rgba(0,0,0,.12); animation: modalIn .15s ease; border: 1.5px solid var(--outline-variant); }
+  @keyframes modalIn { from { opacity:0; transform:scale(.97) translateY(6px) } to { opacity:1; transform:none } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin .7s linear infinite; display:inline-block; }
+  .modal-header { position: sticky; top: 0; background: var(--surface-lowest); padding: 18px 22px 14px; border-bottom: 1.5px solid var(--outline-variant); display: flex; justify-content: space-between; align-items: flex-start; z-index: 1; box-shadow: none; }
+
+  /* ── 점수 배지 ── */
+  .score-badge { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 3px; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .score-badge.s1,.score-badge.s2 { background: #fee2e2; color: #b91c1c; }
+  .score-badge.s3 { background: #fef9c3; color: #92400e; }
+  .score-badge.s4,.score-badge.s5 { background: #dcfce7; color: #15803d; }
+
+  /* ── 설정 패널 ── */
+  .q-textarea { width: 100%; border: 1.5px solid var(--outline-variant); border-radius: 3px; padding: 9px 12px; font-size: .8125rem; line-height: 1.6; resize: vertical; min-height: 60px; background: var(--surface-lowest); transition: border-color .15s; color: var(--on-surface); }
+  .q-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+  .q-row-card { border: 1.5px solid var(--outline-variant); border-radius: 3px; background: var(--surface-low); box-shadow: none; transition: border-color .15s; overflow: hidden; }
+  .q-row-card:hover { border-color: var(--outline); }
+
+  /* 점수별 설명 (선택적 BARS-style 블록) */
+  .desc-toggle-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--on-surface-variant); padding: 6px 12px; background: var(--surface-low); border: 1.5px solid var(--outline-variant); border-radius: 6px; cursor: pointer; transition: all .12s; margin-top: 4px; }
+  .desc-toggle-btn:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+  .desc-toggle-btn.has-desc { background: var(--primary-soft); border-color: #fca5a5; color: var(--primary); }
+  .desc-toggle-btn .dtb-icon { font-size: 13px; line-height: 1; }
+  .desc-toggle-btn .dtb-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 16px; padding: 0 4px; background: var(--primary); color: #fff; border-radius: 9px; font-size: 9.5px; font-weight: 800; }
+  .desc-body { display: none; padding: 12px; background: var(--surface-low); border: 1.5px dashed var(--outline-variant); border-radius: 4px; margin-top: 6px; }
+  .desc-body.open { display: block; }
+  .desc-body-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .desc-body-head label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--outline); }
+  .desc-maxscore-sel { border: 1.5px solid var(--outline-variant); border-radius: 3px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: var(--surface-lowest); color: var(--on-surface); }
+  .desc-translate-btn { font-size: 11px; font-weight: 700; padding: 5px 10px; border: 1.5px solid var(--outline-variant); border-radius: 3px; background: var(--surface-lowest); color: var(--on-surface); cursor: pointer; transition: all .12s; }
+  .desc-translate-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+  .desc-translate-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .desc-hidden-hint { font-size: 10px; color: var(--text-dim); font-style: italic; margin-top: 4px; }
+  .score-pill { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 800; font-size: 11px; align-items: center; justify-content: center; flex-shrink: 0; }
+  .desc-score-row { display: grid; grid-template-columns: 32px 1fr 1fr; gap: 8px; margin-bottom: 6px; align-items: start; }
+  .desc-score-row textarea { width: 100%; border: 1.5px solid var(--outline-variant); border-radius: 3px; padding: 5px 8px; font-size: 12px; line-height: 1.4; resize: vertical; min-height: 32px; background: var(--surface-lowest); color: var(--on-surface); }
+  .desc-score-row textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+  .role-section { border: 2px solid var(--outline); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 10px; transition: opacity .15s, box-shadow .15s, border-color .15s; }
+  .role-section:hover { border-color: var(--on-surface-variant); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .role-section.expanded { border-color: var(--primary); box-shadow: 0 4px 12px var(--primary-soft); }
+  .role-section.dragging { opacity: .45; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+  .role-section.drag-over { box-shadow: 0 0 0 2px var(--primary); }
+  .drag-handle { cursor: grab; padding: 0 6px; color: var(--text-dim); flex-shrink: 0; }
+  .drag-handle:hover { color: var(--primary); }
+  .drag-handle:active { cursor: grabbing; }
+  .role-section-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: var(--surface-low); border-bottom: 2px solid var(--outline-variant); cursor: pointer; user-select: none; transition: background .12s, border-color .15s; }
+  .role-section-header:hover { background: var(--surface-low-hover); box-shadow: inset 3px 0 0 var(--primary); }
+  .role-section-header:hover .role-chevron { color: var(--primary); }
+  .role-section.expanded .role-section-header { background: var(--primary-soft); border-bottom-color: var(--primary); }
+  /* 펼침/접힘 — grid-template-rows 트릭 (feedback_ui_animation.md) */
+  .role-section-body {
+    background: var(--surface-lowest);
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .3s cubic-bezier(.22,.68,0,1.2);
+    overflow: hidden;
+  }
+  .role-section-body.open { grid-template-rows: 1fr; }
+  .role-section-body > .rsb-inner {
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 16px;
+    transition: padding .3s cubic-bezier(.22,.68,0,1.2);
+  }
+  .role-section-body.open > .rsb-inner { padding: 16px; }
+  .role-chevron { transition: transform .3s cubic-bezier(.22,.68,0,1.2); }
+  .role-chevron.open { transform: rotate(180deg); }
+  .weight-input { width: 84px; border: 1.5px solid var(--outline-variant); border-radius: 3px; padding: 5px 8px; font-size: .875rem; font-weight: 800; text-align: center; transition: border-color .15s; background: var(--surface-lowest); color: var(--on-surface); }
+  .weight-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+  input[type=range] { accent-color: var(--primary); cursor: pointer; }
+  .mincount-input { width: 48px; border: 1.5px solid var(--primary); border-radius: 3px; padding: 4px 5px; font-size: .875rem; font-weight: 800; text-align: center; background: var(--surface-lowest); color: var(--on-surface); transition: border-color .15s; }
+  .mincount-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+
+  /* ── 세션 배지 & 행 ── */
+  .session-badge-active { background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7; font-weight: 700; font-size: .7rem; padding: 2px 8px; border-radius: 3px; }
+  .session-badge-closed { background: var(--surface-low); color: var(--on-surface-variant); border: 1.5px solid var(--outline-variant); font-weight: 700; font-size: .7rem; padding: 2px 8px; border-radius: 3px; }
+  .session-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-radius: 3px; border: 1.5px solid var(--outline-variant); background: var(--surface-lowest); transition: border-color .15s; box-shadow: none; }
+  .session-row:hover { border-color: var(--primary); box-shadow: none; transform: none; }
+  .session-row.active-session { border-color: #6ee7b7; background: #f6fdf9; box-shadow: none; }
+
+  /* ── btn-bulk ── */
+  .btn-bulk {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--strong-bg); color: #fff; font-weight: 700;
+    border: 1.5px solid var(--strong-bg); border-radius: 3px;
+    cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-bulk:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); transform: none; box-shadow: none; filter: none; }
+  .btn-bulk:active:not(:disabled) { opacity: .85; }
+  .btn-bulk:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── btn-bulk-action ── */
+  .btn-bulk-action {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--strong-bg); color: #fff; font-weight: 700;
+    border: 1.5px solid var(--strong-bg); border-radius: 3px;
+    cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-bulk-action:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); transform: none; box-shadow: none; filter: none; }
+  .btn-bulk-action:active:not(:disabled) { opacity: .85; }
+  .btn-bulk-action:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ── btn-bulk-cancel ── */
+  .btn-bulk-cancel {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface-lowest); color: var(--text); font-weight: 600;
+    border: 1.5px solid var(--outline-variant); border-radius: 3px;
+    cursor: pointer; transition: all .15s; box-shadow: none;
+  }
+  .btn-bulk-cancel:hover { border-color: var(--outline); color: var(--on-surface); transform: none; box-shadow: none; filter: none; }
+  .btn-bulk-cancel:active { opacity: .85; }
+
+  /* ── 토스트 ── */
+  #toastContainer { pointer-events: none; position: fixed; top: 80px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 8px; }
+
+  /* 드롭다운: layout.html 의 .dyb-dd-trigger / .dyb-dd-menu / .dyb-dd-option 사용.
+     동적 옵션은 JS 에서 .dyb-dd-option 클래스로 렌더. */
+
+  /* ── 모달 닫기 버튼 hover ── */
+  .modal-header button[onclick*="closeModal"] { transition: all .15s; }
+  .modal-header button[onclick*="closeModal"]:hover {
+    background: var(--surface-low) !important; color: var(--primary) !important; transform: none;
+  }
+
+  /* ── 툴팁 ── */
+  .tt { position: relative; }
+  .tt::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+    background: #1e3a5f; color: #e0f0ff;
+    font-size: 11px; font-weight: 500; line-height: 1.6;
+    padding: 9px 13px; border-radius: 10px;
+    border: 1.5px solid #3b82f6;
+    white-space: pre-wrap; max-width: 320px; min-width: 200px; text-align: left;
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+    z-index: 9999; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  }
+  .tt::before {
+    content: ''; position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+    border: 6px solid transparent; border-bottom-color: #3b82f6;
+    pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 9999;
+  }
+  .tt:hover::after, .tt:hover::before { opacity: 1; }
+
+  /* ── 응답 리스트 아이콘 버튼 ── */
+  .icon-action-btn {
+    min-width: 30px; min-height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all .15s; border-radius: 3px;
+  }
+  .icon-action-btn:hover { transform: none; opacity: .75; }
+
+  input.bulk-checkbox { accent-color: var(--primary); }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     Dark mode — 시맨틱 색 (badge·score·session·danger·tooltip 등) 다크 variant.
+     중립/표면 토큰은 layout 의 tokens.css 가 자동 override 하므로 여기서 다루지 않음.
+     원칙: 라이트 hue 유지하면서 saturation 낮추고 lightness 어둡게,
+     배경은 alpha 가 있는 deep tint, 텍스트는 라이트 친화적 톤으로.
+     ════════════════════════════════════════════════════════════════════════ */
+  html[data-theme="dark"] .badge-done       { background: rgba(34,197,94,.16);   color: #4ade80; border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .badge-pending    { background: rgba(234,179,8,.16);    color: #fde047; border-color: rgba(234,179,8,.40); }
+  html[data-theme="dark"] .badge-inprogress { background: rgba(59,130,246,.16);   color: #93c5fd; border-color: rgba(59,130,246,.40); }
+  html[data-theme="dark"] .badge-over       { background: rgba(139,92,246,.16);   color: #c4b5fd; border-color: rgba(139,92,246,.40); }
+  html[data-theme="dark"] .badge-type-position { background: rgba(59,130,246,.14); color: #93c5fd; border-color: rgba(59,130,246,.32); }
+  html[data-theme="dark"] .badge-type-regular  { background: var(--surface-low);   color: var(--text-muted); border-color: var(--outline-variant); }
+  html[data-theme="dark"] .badge-type-tl       { background: rgba(139,92,246,.14); color: #c4b5fd; border-color: rgba(139,92,246,.32); }
+  html[data-theme="dark"] .badge-type-sub      { background: rgba(234,179,8,.14);  color: #fde047; border-color: rgba(234,179,8,.32); }
+  html[data-theme="dark"] .badge-type-stl      { background: rgba(236,72,153,.14); color: #f9a8d4; border-color: rgba(236,72,153,.32); }
+  html[data-theme="dark"] .score-badge.s1,
+  html[data-theme="dark"] .score-badge.s2 { background: rgba(220,38,38,.18); color: #fca5a5; }
+  html[data-theme="dark"] .score-badge.s3 { background: rgba(234,179,8,.18); color: #fde047; }
+  html[data-theme="dark"] .score-badge.s4,
+  html[data-theme="dark"] .score-badge.s5 { background: rgba(34,197,94,.18); color: #86efac; }
+  html[data-theme="dark"] .session-badge-active { background: rgba(34,197,94,.18); color: #86efac; border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .session-badge-closed { background: var(--surface-low);  color: var(--text-muted); border-color: var(--outline-variant); }
+  html[data-theme="dark"] .session-row.active-session { background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .teacher-row.done       { background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .teacher-row.done:hover { border-color: #22c55e; }
+  /* desc / role-section 빨간 hover/expanded 배경 — primary-soft 토큰이 다크에선 자동으로 어둡게 매핑됨 */
+  html[data-theme="dark"] .desc-toggle-btn.has-desc { border-color: rgba(176,17,22,.45); }
+  /* danger button — 라이트의 #dc2626 / #fca5a5 유지하되 다크에선 톤다운 */
+  html[data-theme="dark"] .btn-danger { color: #f87171; border-color: rgba(220,38,38,.45); }
+  html[data-theme="dark"] .btn-danger:hover:not(:disabled) { border-color: #f87171; }
+
+  /* ── 입력 필드 placeholder 색 (Phase G follow-up) ──
+     기본 브라우저 placeholder 가 다크 표면 위에서 너무 흐리게 보이는 문제 보정 */
+  input::placeholder, textarea::placeholder { color: var(--text-dim); opacity: 1; }
+
+  /* ── admin_sessions.js JS-rendered helper classes (Phase G) ──
+     인라인 hex 를 클래스로 추출해 라이트/다크 양쪽에서 토큰화 가능하도록 분리 */
+  .sched-badge { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .passcode-badge { background: #fff1f2; color: var(--primary-dark); border: 1px solid #fbdadc; }
+  .reopen-btn { border: 1.5px solid #6ee7b7; border-radius: 3px; color: #065f46; background: var(--surface-lowest); }
+  .reopen-btn:hover { background: #f0fdf4; border-color: #22c55e; }
+  .trash-purple-btn { color: #7c3aed; border-color: #ddd6fe; }
+  html[data-theme="dark"] .sched-badge      { background: rgba(217,119,6,.18); color: #fcd34d; border-color: rgba(217,119,6,.40); }
+  html[data-theme="dark"] .passcode-badge   { background: rgba(176,17,22,.18); color: #fca5a5; border-color: rgba(176,17,22,.40); }
+  html[data-theme="dark"] .reopen-btn       { background: transparent; border-color: rgba(34,197,94,.40); color: #86efac; }
+  html[data-theme="dark"] .reopen-btn:hover { background: rgba(34,197,94,.10); border-color: #22c55e; }
+  html[data-theme="dark"] .trash-purple-btn { color: #c4b5fd; border-color: rgba(124,58,237,.40); }
+
+  /* ── Tailwind 시맨틱 유틸리티 다크 변형 (info/success 박스 등) ── */
+  html[data-theme="dark"] .bg-amber-50    { background-color: rgba(217,119,6,.12) !important; }
+  html[data-theme="dark"] .border-amber-200 { border-color: rgba(217,119,6,.40) !important; }
+  html[data-theme="dark"] .text-amber-700 { color: #fcd34d !important; }
+  html[data-theme="dark"] .bg-emerald-50  { background-color: rgba(34,197,94,.12) !important; }
+  html[data-theme="dark"] .border-emerald-200 { border-color: rgba(34,197,94,.40) !important; }
+  html[data-theme="dark"] .text-emerald-500,
+  html[data-theme="dark"] .text-emerald-700 { color: #86efac !important; }
+
+  /* Tailwind 일반 시맨틱 다크 (admin 페이지에서 사용되는 색만) */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50,
+  html[data-theme="dark"] .bg-gray-100,
+  html[data-theme="dark"] .bg-zinc-50,
+  html[data-theme="dark"] .bg-zinc-100,
+  html[data-theme="dark"] .bg-slate-50,
+  html[data-theme="dark"] .bg-slate-100   { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400,
+  html[data-theme="dark"] .text-zinc-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500,
+  html[data-theme="dark"] .text-zinc-500,
+  html[data-theme="dark"] .text-slate-500 { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900,
+  html[data-theme="dark"] .text-zinc-700,
+  html[data-theme="dark"] .text-zinc-800,
+  html[data-theme="dark"] .text-zinc-900,
+  html[data-theme="dark"] .text-slate-600 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200,
+  html[data-theme="dark"] .border-gray-300,
+  html[data-theme="dark"] .border-zinc-200,
+  html[data-theme="dark"] .border-slate-200 { border-color: var(--border) !important; }
+  /* blue/red/green/yellow 시맨틱 */
+  html[data-theme="dark"] .bg-blue-50     { background-color: rgba(59,130,246,.12) !important; }
+  html[data-theme="dark"] .bg-blue-100    { background-color: rgba(59,130,246,.18) !important; }
+  html[data-theme="dark"] .border-blue-100,
+  html[data-theme="dark"] .border-blue-200 { border-color: rgba(59,130,246,.40) !important; }
+  html[data-theme="dark"] .text-blue-400,
+  html[data-theme="dark"] .text-blue-500,
+  html[data-theme="dark"] .text-blue-600,
+  html[data-theme="dark"] .text-blue-700 { color: #93c5fd !important; }
+  html[data-theme="dark"] .bg-red-50      { background-color: rgba(220,38,38,.12) !important; }
+  html[data-theme="dark"] .bg-red-100     { background-color: rgba(220,38,38,.18) !important; }
+  html[data-theme="dark"] .border-red-200 { border-color: rgba(220,38,38,.40) !important; }
+  html[data-theme="dark"] .text-red-700,
+  html[data-theme="dark"] .text-red-600 { color: #fca5a5 !important; }
+  html[data-theme="dark"] .bg-green-50,
+  html[data-theme="dark"] .bg-green-100   { background-color: rgba(34,197,94,.18) !important; }
+  html[data-theme="dark"] .text-green-600,
+  html[data-theme="dark"] .text-green-700 { color: #86efac !important; }
+  html[data-theme="dark"] .bg-yellow-100  { background-color: rgba(234,179,8,.18) !important; }
+  html[data-theme="dark"] .text-yellow-700 { color: #fde047 !important; }
+  html[data-theme="dark"] .bg-purple-50,
+  html[data-theme="dark"] .bg-purple-100  { background-color: rgba(139,92,246,.18) !important; }
+  html[data-theme="dark"] .text-purple-700 { color: #c4b5fd !important; }
+  html[data-theme="dark"] .bg-orange-50,
+  html[data-theme="dark"] .bg-orange-100  { background-color: rgba(249,115,22,.18) !important; }
+  html[data-theme="dark"] .text-orange-700 { color: #fdba74 !important; }
+  html[data-theme="dark"] .bg-teal-50,
+  html[data-theme="dark"] .bg-teal-100    { background-color: rgba(20,184,166,.18) !important; }
+  html[data-theme="dark"] .text-teal-700 { color: #5eead4 !important; }
+
+  /* ── 치환 코드 안내 박스 (info, blue 톤) ── */
+  .info-box       { background: #eff6ff; border-color: #bfdbfe; }
+  .info-box-title { color: #1d4ed8; }
+  .info-box-chip  { background: #dbeafe; color: #1e40af; }
+  html[data-theme="dark"] .info-box       { background: rgba(59,130,246,.12); border-color: rgba(59,130,246,.40); }
+  html[data-theme="dark"] .info-box-title { color: #93c5fd; }
+  html[data-theme="dark"] .info-box-chip  { background: rgba(59,130,246,.20); color: #93c5fd; }
+
+  /* Trash Progress 모달 — 진행률 게이지바 (.tp-* prefix; analysis.html 의 .progress-bar-fill 과 충돌 회피) */
+  .tp-track { height: 8px; background: var(--surface-low); border: 1px solid var(--outline-variant); border-radius: 4px; overflow: hidden; }
+  .tp-fill  { height: 100%; background: var(--primary); border-radius: 4px; transition: width 0.3s ease; width: 0%; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[1400px] mx-auto pb-10 px-2 sm:px-4 mt-2">
+
+  <!-- 헤더 -->
+  <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-clipboard2-pulse-fill" style="color:var(--primary)"></i> 평가 관리자
+        <span class="text-sm font-bold text-white px-2.5 py-0.5 rounded-full ml-1" style="background:var(--primary)">v2</span>
+      </h1>
+      <p class="text-sm mt-1" style="color:var(--on-surface-variant)">평가 세션 · 설정 · 이메일 초안 <span class="text-xs opacity-60">— 관리자 전용</span></p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- NT Cache -->
+      <button onclick="refreshNtCache()" id="ntCacheBtn" class="btn-secondary px-3 py-2.5 flex-col gap-0 leading-tight tt" data-tip="교사 이름·닉네임 캐시를 갱신합니다.&#10;Refresh teacher name/nickname cache." style="position:relative;z-index:100;">
+        <span class="flex items-center gap-1.5"><i class="bi bi-database-fill-gear text-sm"></i> <span class="text-sm font-bold">NT 캐시</span></span>
+        <span class="text-[10px] opacity-60 hidden sm:block">Refresh</span>
+      </button>
+      <!-- Roster Cache -->
+      <button onclick="refreshRosterCache()" id="rosterCacheBtn" class="btn-secondary px-3 py-2.5 flex-col gap-0 leading-tight tt" data-tip="직원 명단 캐시를 갱신합니다.&#10;Refresh staff roster cache." style="position:relative;z-index:100;">
+        <span class="flex items-center gap-1.5"><i class="bi bi-people-fill text-sm"></i> <span class="text-sm font-bold">명단</span></span>
+        <span class="text-[10px] opacity-60 hidden sm:block">Refresh</span>
+      </button>
+      <!-- Active Session Badge -->
+      <div id="activeSessionBadge" class="hidden items-center gap-2 px-3 py-2 bg-emerald-50 border-2 border-emerald-200 rounded-xl font-bold text-emerald-700">
+        <i class="bi bi-calendar2-check-fill text-sm"></i>
+        <div class="flex flex-col leading-tight">
+          <span class="text-sm" id="activeSessionLabel">-</span>
+          <span class="text-[10px] font-normal text-emerald-500 hidden sm:block" id="activeSessionDates"></span>
+        </div>
+      </div>
+      <!-- New Evaluation -->
+      <a href="/eval-v2" class="btn-primary px-4 py-2.5 rounded-xl flex-col gap-0 leading-tight">
+        <span class="flex items-center gap-1.5"><i class="bi bi-pencil-fill text-sm"></i> <span class="text-sm font-bold">평가 입력</span></span>
+        <span class="text-[10px] opacity-70 hidden sm:block">New Eval</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- 탭 -->
+  <div class="flex gap-2 mb-6 p-1.5 rounded-2xl w-fit border" style="background:var(--surface-low);border-color:var(--outline-variant)">
+    <button onclick="switchTab('config')" id="tab-config" class="tab-btn active flex-col gap-0 leading-tight">
+      <span class="flex items-center gap-1.5"><i class="bi bi-gear-fill"></i> <span>설정</span></span>
+      <span class="text-[10px] opacity-70 font-normal hidden sm:block">평가 설정 / Settings</span>
+    </button>
+    <button onclick="switchTab('sessions')" id="tab-sessions" class="tab-btn flex-col gap-0 leading-tight">
+      <span class="flex items-center gap-1.5"><i class="bi bi-calendar2-range-fill"></i> <span>평가 세션</span></span>
+      <span class="text-[10px] opacity-70 font-normal hidden sm:block">회차 관리 / Sessions</span>
+    </button>
+    <button onclick="switchTab('drafts')" id="tab-drafts" class="tab-btn flex-col gap-0 leading-tight">
+      <span class="flex items-center gap-1.5"><i class="bi bi-envelope-paper-fill"></i> <span>이메일 초안</span></span>
+      <span class="text-[10px] opacity-70 font-normal hidden sm:block">초안 생성 / Drafts</span>
+    </button>
+    <button onclick="switchTab('folders')" id="tab-folders" class="tab-btn flex-col gap-0 leading-tight">
+      <span class="flex items-center gap-1.5"><i class="bi bi-folder-fill"></i> <span>평가 폴더</span></span>
+      <span class="text-[10px] opacity-70 font-normal hidden sm:block">Eval Folders</span>
+    </button>
+  </div>
+
+  <!-- TAB 1: 평가 설정 -->
+  <div id="panel-config">
+    <div class="flex items-center gap-3 mb-5 p-4 rounded-2xl shadow-sm border-2" style="background:var(--surface-lowest);border-color:var(--outline-variant)">
+      <i class="bi bi-database-fill text-lg flex-shrink-0" style="color:var(--outline)"></i>
+      <div class="flex-1">
+        <p class="text-sm font-bold" style="color:var(--on-surface)">편집 대상</p>
+        <p class="text-xs mt-0.5" style="color:var(--outline)">기본 설정 또는 특정 세션의 스냅샷을 편집할 대상을 선택하세요.</p>
+      </div>
+      <div class="relative inline-block">
+        <div class="dyb-dd-trigger" id="cfgSessionTrigger" onclick="dybToggle('cfgSession')" style="min-width:180px;">
+          <span class="dyb-label">기본값 (전체 적용)</span><i class="bi bi-chevron-down"></i>
+        </div>
+        <div class="dyb-dd-menu to-right" id="cfgSessionMenu">
+          <div class="dyb-dd-option selected" data-value="" onclick="dybPick('cfgSession','','기본값 (전체 적용)')">기본값 (전체 적용)</div>
+        </div>
+        <select id="cfgSessionSelect" onchange="onCfgSessionChange(this.value)" class="sr-only">
+          <option value="">기본값 (전체 적용)</option>
+        </select>
+      </div>
+    </div>
+    <div id="cfgSessionWarning" class="hidden mb-4 px-4 py-3 bg-amber-50 border-2 border-amber-200 rounded-xl text-sm text-amber-700 font-medium">
+      <i class="bi bi-exclamation-triangle-fill mr-1.5"></i>
+      <span id="cfgSessionWarningText"></span>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-6">
+      {% for type_key, type_label in eval_types.items() %}
+      <button onclick="loadConfig('{{ type_key }}')" data-cfgtype="{{ type_key }}" class="type-btn">{{ type_label }}</button>
+      {% endfor %}
+    </div>
+
+    <div id="configPanel" style="display:none;">
+      <div class="flex items-center justify-between mb-4 rounded-2xl px-5 py-3 shadow-sm border-2" style="background:var(--surface-lowest);border-color:var(--outline-variant)">
+        <div class="flex items-center gap-3">
+          <i class="bi bi-sliders" style="color:var(--primary)"></i>
+          <span class="text-sm font-bold" style="color:var(--on-surface-variant)">가중치 합계</span>
+          <span id="cfgWeightsTotal" class="text-xl font-extrabold" style="color:var(--on-surface)">0</span>
+          <span class="text-sm font-bold" style="color:var(--outline)">%</span>
+          <span id="cfgWeightsTotalBadge" class="text-xs font-bold px-2.5 py-1 rounded-full"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="addConfigRole()" class="btn-secondary px-3 py-1.5 text-xs" style="border-style:dashed">
+            <i class="bi bi-plus-lg"></i> 역할 추가 <span style="font-size:10px;color:var(--on-surface-variant);opacity:.65;font-weight:500;">/ Add Role</span>
+          </button>
+          <button id="saveConfigBtnTop" onclick="saveConfig()" class="btn-primary px-5 py-2 text-sm rounded-xl">
+            <i class="bi bi-floppy-fill cfg-save-icon"></i> <span class="cfg-save-label">전체 저장 <span style="font-size:10px;opacity:.7;font-weight:500;">/ Save All</span></span>
+          </button>
+        </div>
+      </div>
+      <div id="configRoles" class="space-y-6"></div>
+      <div class="mt-6 flex justify-end">
+        <button id="saveConfigBtnBottom" onclick="saveConfig()" class="btn-primary px-6 py-3 text-sm rounded-xl">
+          <i class="bi bi-floppy-fill cfg-save-icon"></i> <span class="cfg-save-label">전체 저장 <span style="font-size:10px;opacity:.7;font-weight:500;">/ Save All</span></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: 회차 관리 -->
+  <div id="panel-sessions" style="display:none;">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-lg font-extrabold" style="color:var(--on-surface)">평가 세션 관리</h2>
+        <p class="text-xs mt-0.5" style="color:var(--outline)">평가 세션을 생성하고 관리합니다.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="runScheduledNotificationCheck()" id="schedCheckBtn" class="btn-secondary px-4 py-2.5 text-sm tt" data-tip="오늘 발송 예약된 알림이 있으면 자동으로 발송합니다.&#10;Automatically sends any notifications scheduled for today.">
+          <i class="bi bi-clock-history"></i> 스케줄 확인 <span style="font-size:10px;color:var(--on-surface-variant);opacity:.65;font-weight:500;">/ Check Schedule</span>
+        </button>
+        <button onclick="deleteAllTestResponses()" class="btn-danger px-4 py-2.5 text-sm tt" data-tip="TEST로 표시된 모든 응답을 삭제합니다. 복구 불가합니다.&#10;Delete all responses marked as TEST. This cannot be undone.">
+          <i class="bi bi-trash3-fill"></i> 테스트 응답 삭제 <span style="font-size:10px;opacity:.65;font-weight:500;">/ Delete Test Data</span>
+        </button>
+        <button onclick="openCreateSessionModal()" class="btn-primary px-4 py-2.5 text-sm rounded-xl">
+          <i class="bi bi-plus-circle-fill"></i> 새 세션 <span style="font-size:10px;opacity:.7;font-weight:500;">/ New Session</span>
+        </button>
+      </div>
+    </div>
+    <div id="sessionsList" class="space-y-3">
+      <div class="flex items-center gap-3 py-8 justify-center" style="color:var(--outline)">
+        <div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+        <span class="text-sm">불러오는 중...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: Email Drafts -->
+  <div id="panel-drafts" style="display:none;">
+
+    <!-- Templates Section -->
+    <div class="mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-base font-extrabold" style="color:var(--on-surface)">이메일 템플릿</h2>
+        </div>
+        <button onclick="saveDraftTemplates()" id="saveTmplBtn" class="btn-primary px-4 py-2 text-sm">
+          <i class="bi bi-floppy-fill"></i> 템플릿 저장 <span style="font-size:10px;opacity:.7;font-weight:500;">/ Save Templates</span>
+        </button>
+      </div>
+
+      <!-- 치환 코드 안내 -->
+      <div class="info-box mb-4 rounded-xl border-2 px-4 py-3">
+        <p class="info-box-title text-xs font-bold mb-2">
+          <i class="bi bi-info-circle-fill mr-1"></i>치환 코드 — 메일 발송 시 아래 코드가 자동으로 치환됩니다.
+        </p>
+        <div class="flex flex-wrap gap-x-6 gap-y-1.5">
+          <div class="flex items-start gap-2">
+            <code class="info-box-chip px-1.5 py-0.5 rounded text-xs font-bold flex-shrink-0">{% raw %}{{CAMPUS_KO}}{% endraw %}</code>
+            <span class="text-xs" style="color:var(--text)">대상 캠퍼스 한글명 <span style="color:var(--text-muted)">(예: Campus A, Campus C)</span></span>
+          </div>
+          <div class="flex items-start gap-2">
+            <code class="info-box-chip px-1.5 py-0.5 rounded text-xs font-bold flex-shrink-0">{% raw %}{{CAMPUS_EN}}{% endraw %}</code>
+            <span class="text-xs" style="color:var(--text)">대상 캠퍼스 영문 코드 <span style="color:var(--text-muted)">(예: CMA, CMC)</span></span>
+          </div>
+          <div class="flex items-start gap-2">
+            <code class="info-box-chip px-1.5 py-0.5 rounded text-xs font-bold flex-shrink-0">{% raw %}{{TEACHER_LIST}}{% endraw %}</code>
+            <span class="text-xs" style="color:var(--text)">캠퍼스 평가 대상 명단 HTML 표 <span style="color:var(--text-muted)">(이름 · ID · 캠퍼스 · 직책)</span></span>
+            <!-- Tooltip trigger -->
+            <div class="relative flex-shrink-0" style="line-height:1">
+              <span class="bi bi-question-circle-fill cursor-pointer" style="color:#93c5fd;font-size:13px" id="tlTrigger"></span>
+              <div id="tlTooltip"
+                   class="hidden absolute rounded-xl shadow-2xl text-xs"
+                   style="width:320px;left:50%;transform:translateX(-50%);bottom:calc(100% + 10px);
+                          background:#1e3a5f;color:#e0f0ff;border:1.5px solid #3b82f6;padding:14px 16px;z-index:9999">
+                <!-- Arrow -->
+                <div style="position:absolute;bottom:-7px;left:50%;transform:translateX(-50%);
+                            width:12px;height:7px;overflow:hidden">
+                  <div style="width:10px;height:10px;background:#1e3a5f;border:1.5px solid #3b82f6;
+                              transform:rotate(45deg);margin:-5px auto 0"></div>
+                </div>
+                <p class="font-bold mb-2" style="color:#93c5fd;font-size:11px;letter-spacing:.05em">
+                  <i class="bi bi-table mr-1"></i>TEACHER_LIST — 수신자별 명단 구성
+                </p>
+                <div class="space-y-2">
+                  <div class="rounded-lg p-2" style="background:rgba(255,255,255,.07)">
+                    <p class="font-bold mb-0.5" style="color:#86efac">GS 팀장 수신 (한국어)</p>
+                    <p style="color:#cbd5e1;line-height:1.5">해당 캠퍼스 전체 강사. 모든 직책 표시.</p>
+                  </div>
+                  <div class="rounded-lg p-2" style="background:rgba(255,255,255,.07)">
+                    <p class="font-bold mb-0.5" style="color:#7dd3fc">TL 팀장 수신 (영어)</p>
+                    <p style="color:#cbd5e1;line-height:1.5">GS 명단에서 <strong style="color:#fda4af">STL · TL 직책 제외</strong> 후, SUB 캠퍼스 중 해당 캠퍼스 배정 강사 추가.</p>
+                  </div>
+                  <div class="rounded-lg p-2" style="background:rgba(255,255,255,.07)">
+                    <p class="font-bold mb-0.5" style="color:#d8b4fe">STL 수신 (영어, SUB 그룹만)</p>
+                    <p style="color:#cbd5e1;line-height:1.5">SUB 캠퍼스 전체 강사에서 <strong style="color:#fda4af">STL · TL 직책 모두 제외</strong>.</p>
+                  </div>
+                  <p class="mt-1" style="color:#94a3b8;font-size:10px">
+                    <i class="bi bi-info-circle mr-1"></i>근속 6개월 미만 또는 "근무 전" 상태는 모든 명단에서 제외됩니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- GS Template -->
+        <div class="rounded-2xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+          <p class="text-xs font-bold uppercase tracking-widest" style="color:var(--outline)">GS — Korean</p>
+          <div>
+            <label class="block text-xs font-semibold mb-1" style="color:var(--on-surface-variant)">제목</label>
+            <input type="text" id="d2_gsTitleInput" class="w-full px-3 py-2 text-sm border-2 rounded-lg" style="background:var(--surface-lowest);color:var(--on-surface);border-color:var(--outline-variant)" placeholder="이메일 제목...">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold mb-1" style="color:var(--on-surface-variant)">본문</label>
+            <textarea id="d2_gsBodyInput" rows="6" class="w-full px-3 py-2 text-sm border-2 rounded-lg resize-y" style="background:var(--surface-lowest);color:var(--on-surface);border-color:var(--outline-variant)" placeholder="이메일 본문..."></textarea>
+          </div>
+        </div>
+
+        <!-- TL Template -->
+        <div class="rounded-2xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+          <p class="text-xs font-bold uppercase tracking-widest" style="color:var(--outline)">TL — English</p>
+          <div>
+            <label class="block text-xs font-semibold mb-1" style="color:var(--on-surface-variant)">제목</label>
+            <input type="text" id="d2_ctlTitleInput" class="w-full px-3 py-2 text-sm border-2 rounded-lg" style="background:var(--surface-lowest);color:var(--on-surface);border-color:var(--outline-variant)" placeholder="이메일 제목...">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold mb-1" style="color:var(--on-surface-variant)">본문</label>
+            <textarea id="d2_ctlBodyInput" rows="6" class="w-full px-3 py-2 text-sm border-2 rounded-lg resize-y" style="background:var(--surface-lowest);color:var(--on-surface);border-color:var(--outline-variant)" placeholder="이메일 본문..."></textarea>
+          </div>
+        </div>
+
+        <!-- STL Template -->
+        <div class="rounded-2xl border-2 p-4 space-y-3" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+          <p class="text-xs font-bold uppercase tracking-widest" style="color:var(--outline)">STL — English</p>
+          <div>
+            <label class="block text-xs font-semibold mb-1" style="color:var(--on-surface-variant)">제목</label>
+            <input type="text" id="d2_stlTitleInput" class="w-full px-3 py-2 text-sm border-2 rounded-lg" style="background:var(--surface-lowest);color:var(--on-surface);border-color:var(--outline-variant)" placeholder="이메일 제목...">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold mb-1" style="color:var(--on-surface-variant)">본문</label>
+            <textarea id="d2_stlBodyInput" rows="6" class="w-full px-3 py-2 text-sm border-2 rounded-lg resize-y" style="background:var(--surface-lowest);color:var(--on-surface);border-color:var(--outline-variant)" placeholder="이메일 본문..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Campus Emails Section -->
+    <div class="mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-base font-extrabold" style="color:var(--on-surface)">캠퍼스 이메일</h2>
+          <p class="text-xs mt-0.5" style="color:var(--outline)">캠퍼스별 GS 및 TL 이메일 주소.</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="refreshCampusEmails()" id="refreshCampusEmailsBtn" class="btn-secondary px-4 py-2 text-sm">
+            <i class="bi bi-arrow-clockwise"></i> 사용자 정보에서 갱신 <span style="font-size:10px;color:var(--on-surface-variant);opacity:.65;font-weight:500;">/ Sync from Users</span>
+          </button>
+          <button onclick="saveDraftCampusEmails()" id="saveCampusEmailsBtn" class="btn-primary px-4 py-2 text-sm">
+            <i class="bi bi-floppy-fill"></i> 이메일 저장 <span style="font-size:10px;opacity:.7;font-weight:500;">/ Save Emails</span>
+          </button>
+        </div>
+      </div>
+      <div class="dyb-table-card">
+        <div class="dyb-table-stripe"></div>
+        <div class="dyb-table-header">
+          <i class="bi bi-envelope-at-fill"></i>
+          <span class="dyb-table-header-title">캠퍼스 이메일</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="dyb-table w-full text-sm">
+            <thead>
+              <tr>
+                <th class="px-4 py-2.5">캠퍼스 (한글)</th>
+                <th class="px-4 py-2.5">캠퍼스 (영문)</th>
+                <th class="px-4 py-2.5">GS 이메일</th>
+                <th class="px-4 py-2.5">TL 이메일</th>
+              </tr>
+            </thead>
+            <tbody id="d2_campusEmailsBody" class="divide-y divide-gray-100">
+              <tr><td colspan="4" class="px-4 py-6 text-center text-sm text-gray-400">불러오는 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generate Drafts Section -->
+    <div class="rounded-2xl border-2 p-5" style="border-color:var(--outline-variant);background:var(--surface-lowest)">
+      <h2 class="text-base font-extrabold mb-1" style="color:var(--on-surface)">이메일 초안 생성</h2>
+      <p class="text-xs mb-4" style="color:var(--outline)">캠퍼스를 선택하고 GS / TL 수신자용 Gmail 초안을 생성합니다. STL 초안은 현재 관리자 이메일로 발송됩니다.</p>
+
+      <!-- Session Selector -->
+      <div class="mb-4">
+        <label class="text-xs font-semibold block mb-1.5" style="color:var(--on-surface-variant)">평가 회차 선택 <span style="font-size:10px;opacity:.6;font-weight:400">Session</span></label>
+        <div class="relative" style="max-width:360px;">
+          <div class="dyb-dd-trigger" id="d2_sessionTrigger" onclick="dybToggle('d2_session')" style="width:100%;">
+            <span class="dyb-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;">기본 (Default — All Sessions)</span>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+          <div class="dyb-dd-menu" id="d2_sessionMenu">
+            <div class="dyb-dd-option selected" data-value="" onclick="dybPick('d2_session','','기본 (Default — All Sessions)')">기본 (Default — All Sessions)</div>
+          </div>
+          <select id="d2_sessionSelect" class="sr-only">
+            <option value="">기본 (Default — All Sessions)</option>
+          </select>
+        </div>
+        <p class="text-[10px] mt-1" style="color:var(--outline)">선택된 회차의 SUB CTL 배정이 이메일 명단에 반영됩니다.</p>
+      </div>
+
+      <!-- Campus Checkboxes -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold" style="color:var(--on-surface-variant)">캠퍼스 선택</span>
+          <button onclick="d2_selectAllCampuses()" class="text-xs font-semibold px-2.5 py-1 rounded-lg border" style="border-color:var(--outline-variant);color:var(--on-surface-variant)">
+            전체 선택 / Select All
+          </button>
+        </div>
+        <div id="d2_campusCheckboxGrid" class="flex flex-wrap gap-2">
+          <span class="text-xs" style="color:var(--outline)">캠퍼스 불러오는 중...</span>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex flex-wrap gap-3">
+        <button onclick="d2_generateGSTLDrafts()" id="d2_gsBtn" class="btn-primary px-5 py-2.5 text-sm">
+          <i class="bi bi-envelope-arrow-up-fill"></i> GS / TL 초안 생성 <span style="font-size:10px;opacity:.7;font-weight:500;">/ Generate Drafts</span>
+        </button>
+        <button onclick="d2_generateSTLDraft()" id="d2_stlBtn" class="btn-secondary px-5 py-2.5 text-sm">
+          <i class="bi bi-envelope-plus-fill"></i> STL 초안 생성 <span style="font-size:10px;color:var(--on-surface-variant);opacity:.65;font-weight:500;">/ Generate Draft</span>
+        </button>
+      </div>
+      <p id="d2_draftMsg" class="mt-3 text-sm font-semibold hidden"></p>
+    </div>
+
+  </div>
+
+  <!-- TAB: Eval Folders -->
+  <div id="panel-folders" style="display:none;">
+
+    <!-- 헤더 -->
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h2 class="text-lg font-extrabold" style="color:var(--on-surface)">
+          <i class="bi bi-folder-fill mr-1.5" style="color:var(--primary)"></i>Evaluation Folder Manager
+        </h2>
+        <p class="text-xs mt-0.5" style="color:var(--outline)">
+          Check and create evaluation folders for teachers
+          <span style="display:block;font-size:.65rem;color:var(--text-dim);margin-top:1px;">교사별 평가 폴더 확인 및 생성</span>
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="fmRunDuplicateAudit()" class="btn-secondary px-3 py-2 text-sm" title="Find emp_ids that exist in multiple nt_* collections">
+          <i class="bi bi-exclamation-diamond"></i> Audit Duplicates
+        </button>
+        <button onclick="fmRunBvAudit()" class="btn-secondary px-3 py-2 text-sm" title="Verify NT Info sheet BV column vs Firestore">
+          <i class="bi bi-shield-check"></i> Audit BV
+        </button>
+        <button onclick="loadFolderManager()" class="btn-secondary px-3 py-2 text-sm">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Duplicate Audit 결과 패널 -->
+    <div id="fmDuplicatePanel" style="display:none;margin-bottom:20px;padding:16px 18px;border:1.5px solid var(--outline-variant);border-radius:6px;background:var(--surface-low);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:700;color:var(--on-surface);">
+          <i class="bi bi-exclamation-diamond mr-1" style="color:var(--primary);"></i>Duplicate emp_id Audit
+          <span id="fmDupSubtitle" style="font-weight:500;color:var(--outline);margin-left:6px;"></span>
+        </div>
+        <button onclick="document.getElementById('fmDuplicatePanel').style.display='none';" class="text-xs" style="color:var(--outline);background:none;border:none;cursor:pointer;">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div id="fmDupSummary" style="margin-bottom:12px;"></div>
+      <div id="fmDupDetails"></div>
+    </div>
+
+    <!-- BV Audit 결과 패널 -->
+    <div id="fmAuditPanel" style="display:none;margin-bottom:20px;padding:16px 18px;border:1.5px solid var(--outline-variant);border-radius:6px;background:var(--surface-low);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:700;color:var(--on-surface);">
+          <i class="bi bi-shield-check mr-1" style="color:var(--primary);"></i>BV Column Audit
+          <span id="fmAuditSubtitle" style="font-weight:500;color:var(--outline);margin-left:6px;"></span>
+        </div>
+        <button onclick="document.getElementById('fmAuditPanel').style.display='none';" class="text-xs" style="color:var(--outline);background:none;border:none;cursor:pointer;">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div id="fmAuditSummary" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+      <div id="fmAuditDetails"></div>
+      <div id="fmAuditActions" style="margin-top:10px;display:none;">
+        <button id="fmAuditFixBtn" onclick="fmFixMissingInSheet()" class="btn-primary px-3 py-2 text-sm">
+          <i class="bi bi-wrench-adjustable"></i> Fix Missing BV Entries
+        </button>
+      </div>
+    </div>
+
+    <!-- 요약 카드 -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;">
+      <div style="background:var(--surface-lowest);border:1.5px solid #86efac;border-radius:4px;padding:14px 18px;text-align:center;">
+        <div id="fmHasCount" style="font-size:1.8rem;font-weight:900;color:#15803d;line-height:1.1;">-</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--outline);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Has Folder</div>
+      </div>
+      <div style="background:var(--surface-lowest);border:1.5px solid #fca5a5;border-radius:4px;padding:14px 18px;text-align:center;">
+        <div id="fmNoCount" style="font-size:1.8rem;font-weight:900;color:#dc2626;line-height:1.1;">-</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--outline);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">No Folder</div>
+      </div>
+      <div style="background:var(--surface-lowest);border:1.5px solid var(--outline-variant);border-radius:4px;padding:14px 18px;text-align:center;">
+        <div id="fmTotalCount" style="font-size:1.8rem;font-weight:900;color:var(--text);line-height:1.1;">-</div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--outline);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Total Teachers</div>
+      </div>
+    </div>
+
+    <!-- 캠퍼스 필터 -->
+    <div id="fmFilterSection" style="display:none;margin-bottom:12px;">
+      <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">Filter by Campus</label>
+      <div class="relative" style="max-width:280px;">
+        <div class="dyb-dd-trigger" id="fmCampusTrigger" onclick="dybToggle('fmCampus')" style="width:100%;">
+          <span class="dyb-label">All Campuses</span><i class="bi bi-chevron-down"></i>
+        </div>
+        <div class="dyb-dd-menu dyb-dd-cols-3" id="fmCampusMenu">
+          <div class="dyb-dd-option selected" data-value="" onclick="dybPick('fmCampus','','All Campuses')">All Campuses</div>
+        </div>
+        <select id="fmCampusSelect" onchange="fmApplyFilter()" class="sr-only">
+          <option value="">All Campuses</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 생성 버튼 -->
+    <div id="fmCreateSection" style="display:none;margin-bottom:16px;">
+      <button id="fmCreateBtn" onclick="fmCreateFolders()" class="btn-primary w-full py-2.5 text-sm" style="justify-content:center;">
+        <i class="bi bi-folder-plus"></i> <span id="fmCreateLabel">Create Folders</span>
+      </button>
+    </div>
+
+    <!-- 폴더 없는 교사 목록 -->
+    <div id="fmTeacherList">
+      <div class="flex items-center gap-3 py-8 justify-center" style="color:var(--outline)">
+        <div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+        <span class="text-sm">Loading...</span>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /.max-w container -->
+
+<!-- ── 커스텀 팝업 ── -->
+<div id="customPromptModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)resolveCustomPrompt(null)">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-header">
+      <h3 id="promptTitle" class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)"></h3>
+      <button onclick="resolveCustomPrompt(null)" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="p-6">
+      <p id="promptMessage" class="text-sm mb-4" style="color:var(--on-surface-variant)"></p>
+      <input id="promptInput" type="text" placeholder="여기에 입력하세요..."
+        class="w-full border-2 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none mb-5 transition-colors"
+        style="display:none;border-color:var(--outline-variant)"
+        onkeydown="if(event.key==='Enter')resolveCustomPrompt('confirm')">
+      <div class="flex gap-3 justify-end flex-wrap">
+        <button onclick="resolveCustomPrompt(null)" class="btn-secondary px-4 py-2.5 text-sm rounded-xl">취소</button>
+        <button onclick="resolveCustomPrompt('secondary')" id="promptSecondaryBtn" class="btn-secondary px-4 py-2.5 text-sm rounded-xl" style="display:none;"></button>
+        <button onclick="resolveCustomPrompt('confirm')" id="promptConfirmBtn" class="btn-primary px-5 py-2.5 text-sm rounded-xl">확인</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 회차 생성 모달 ── -->
+<div id="createSessionModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('createSessionModal')">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-calendar2-plus-fill" style="color:var(--primary)"></i> 새 평가 세션
+      </h3>
+      <button onclick="closeModal('createSessionModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700 font-medium space-y-1">
+        <div><i class="bi bi-info-circle-fill mr-1"></i> 세션 생성 시 현재 문항과 가중치가 스냅샷으로 저장됩니다.</div>
+        <div><i class="bi bi-lock-fill mr-1"></i> 세션 이름은 생성 후 변경할 수 없습니다. 신중하게 입력하세요.</div>
+      </div>
+      <div>
+        <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">세션 이름 <span style="color:var(--error)">*</span></label>
+        <input id="sessionLabelInput" type="text" placeholder="예: 2026 May"
+          class="w-full border-2 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none transition-colors"
+          style="border-color:var(--outline-variant)">
+        <p class="text-[10px] mt-1.5" style="color:var(--outline)">이 이름이 고유 ID로 사용됩니다. "/"를 포함할 수 없습니다.</p>
+      </div>
+      <div class="flex gap-3">
+        <div class="flex-1">
+          <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">시작일 <span style="color:var(--error)">*</span></label>
+          <input id="sessionStartInput" type="hidden" value="">
+          <script>document.addEventListener('DOMContentLoaded',()=>DYBDatepicker.replace('sessionStartInput',{placeholder:'시작일'}));</script>
+        </div>
+        <div class="flex-1">
+          <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">종료일 <span style="color:var(--error)">*</span></label>
+          <input id="sessionEndInput" type="hidden" value="">
+          <script>document.addEventListener('DOMContentLoaded',()=>DYBDatepicker.replace('sessionEndInput',{placeholder:'종료일'}));</script>
+        </div>
+      </div>
+
+      <!-- Passcode (선택) -->
+      <div class="pt-1">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input id="sessionRequirePasscode" type="checkbox" onchange="togglePasscodeSection()" class="w-4 h-4" style="accent-color:var(--primary)">
+          <span class="text-xs font-bold" style="color:var(--on-surface)">
+            <i class="bi bi-lock-fill mr-1" style="color:var(--primary)"></i>Passcode 필요
+            <span class="text-[10px] opacity-60 font-normal">/ Require passcode</span>
+          </span>
+        </label>
+        <div id="passcodeSection" style="display:none;margin-top:10px;">
+          <div class="flex gap-2 items-center">
+            <input id="sessionPasscodeInput" type="text" placeholder="passcode (4-64 characters) / 자동 생성 가능"
+              class="flex-1 border-2 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none transition-colors"
+              style="border-color:var(--outline-variant);letter-spacing:.05em"
+              maxlength="64">
+            <button type="button" onclick="autoGeneratePasscode()" class="btn-secondary text-xs px-3 py-2 rounded-lg flex items-center gap-1 flex-shrink-0" title="Auto-generate 8-char passcode">
+              <i class="bi bi-magic"></i><span class="hidden sm:inline">Auto</span>
+            </button>
+          </div>
+          <p class="text-[10px] mt-1.5" style="color:var(--outline)">
+            <i class="bi bi-info-circle mr-1"></i>
+            저장 후 한 번만 표시됩니다. 평문은 서버에 저장되지 않으니 안전한 곳에 보관하세요.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button onclick="closeModal('createSessionModal')" class="btn-secondary flex-1 py-2.5 text-sm rounded-xl justify-center">취소 <span style="font-size:10px;color:var(--on-surface-variant);opacity:.65;font-weight:500;">/ Cancel</span></button>
+        <button onclick="createSession()" class="btn-primary flex-1 py-2.5 text-sm rounded-xl justify-center">생성 <span style="font-size:10px;opacity:.7;font-weight:500;">/ Create</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 회차 기간 수정 모달 ── -->
+<div id="editSessionDatesModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeModal('editSessionDatesModal')">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-calendar-event-fill" style="color:var(--primary)"></i> 평가 기간 수정
+        <span class="text-[10px] opacity-60 font-normal">/ Edit Period</span>
+      </h3>
+      <button onclick="closeModal('editSessionDatesModal')" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div class="text-sm" style="color:var(--on-surface-variant)">
+        세션: <strong id="editDatesSessionLabel" style="color:var(--on-surface)"></strong>
+      </div>
+      <div class="flex gap-3">
+        <div class="flex-1">
+          <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">시작일 <span style="color:var(--error)">*</span></label>
+          <input id="editDatesStartInput" type="hidden" value="">
+          <script>document.addEventListener('DOMContentLoaded',()=>DYBDatepicker.replace('editDatesStartInput',{placeholder:'시작일'}));</script>
+        </div>
+        <div class="flex-1">
+          <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">종료일 <span style="color:var(--error)">*</span></label>
+          <input id="editDatesEndInput" type="hidden" value="">
+          <script>document.addEventListener('DOMContentLoaded',()=>DYBDatepicker.replace('editDatesEndInput',{placeholder:'종료일'}));</script>
+        </div>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700 font-medium">
+        <i class="bi bi-info-circle-fill mr-1"></i>
+        기간을 단축해도 이미 제출된 응답은 보존됩니다. 단 새 기간 외의 제출은 자동 차단됩니다.
+      </div>
+      <div class="flex gap-3 pt-2">
+        <button onclick="closeModal('editSessionDatesModal')" class="btn-secondary flex-1 py-2.5 text-sm rounded-xl justify-center">취소 <span style="font-size:10px;color:var(--on-surface-variant);opacity:.65;font-weight:500;">/ Cancel</span></button>
+        <button id="editDatesSaveBtn" onclick="submitEditSessionDates()" class="btn-primary flex-1 py-2.5 text-sm rounded-xl justify-center items-center gap-2">저장 <span style="font-size:10px;opacity:.7;font-weight:500;">/ Save</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Passcode 평문 reveal 모달 — 저장/생성 직후 한 번만 표시 ── -->
+<div id="passcodeRevealModal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closePasscodeRevealModal()">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-header">
+      <h3 class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-key-fill" style="color:var(--primary)"></i>
+        세션 Passcode
+        <span class="text-[10px] opacity-60 font-normal">/ Session Passcode</span>
+      </h3>
+      <button onclick="closePasscodeRevealModal()" class="w-9 h-9 flex items-center justify-center rounded-xl text-lg flex-shrink-0" style="background:var(--surface-low);color:var(--on-surface-variant)"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="p-6 space-y-4">
+      <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700 font-medium space-y-1">
+        <div><i class="bi bi-exclamation-triangle-fill mr-1"></i><b>지금만 확인 가능합니다.</b> 이 창을 닫으면 평문을 다시 볼 수 없고, 필요 시 regenerate 만 가능합니다.</div>
+        <div><i class="bi bi-envelope-fill mr-1"></i>평가자에게 이메일로 전달하고 안전한 곳에 보관하세요.</div>
+      </div>
+      <div>
+        <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">세션</label>
+        <div id="passcodeRevealSessionLabel" class="text-sm font-bold" style="color:var(--on-surface)">—</div>
+      </div>
+      <div>
+        <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">Passcode</label>
+        <div class="flex gap-2 items-center">
+          <code id="passcodeRevealValue" class="flex-1 text-lg font-mono px-3 py-3 rounded-xl text-center" style="background:var(--surface-low);color:var(--primary);letter-spacing:.15em;border:2px dashed rgba(176,17,22,.45)">—</code>
+          <button type="button" onclick="copyRevealedPasscode()" class="btn-primary text-sm px-3 py-3 rounded-xl" title="Copy to clipboard">
+            <i class="bi bi-clipboard"></i>
+          </button>
+        </div>
+      </div>
+      <div class="pt-2">
+        <button onclick="closePasscodeRevealModal()" class="btn-secondary w-full py-2.5 text-sm rounded-xl justify-center">닫기 <span style="font-size:10px;opacity:.65;font-weight:500;">/ Close</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- (Annual Eval editor & config moved to /eval-v2/annual-eval) -->
+
+
+<!-- ── 세션 보고서 휴지통 이동 진행률 모달 — 결정적 게이지바 (자동 닫기) ── -->
+<div id="trashProgressModal" class="modal-backdrop" style="display:none;">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 class="text-base font-extrabold flex items-center gap-2" style="color:var(--on-surface)">
+        <i class="bi bi-trash3-fill" style="color:var(--primary)"></i> 세션 보고서 휴지통 이동 중
+        <span class="text-[10px] opacity-60 font-normal">/ Trashing Reports</span>
+      </h3>
+      {# 진행 중 강제 닫기 위험 — 닫기 버튼 의도적 생략 (자동 닫기) #}
+    </div>
+    <div class="p-6 space-y-4">
+      <div id="trashProgressLabel" class="text-sm" style="color:var(--on-surface-variant)">처리 중...</div>
+      <div class="tp-track">
+        <div id="trashProgressFill" class="tp-fill"></div>
+      </div>
+      <div id="trashProgressCount" class="text-xs text-right font-medium" style="color:var(--outline)">0 / 0</div>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* ── Jinja2 서버 데이터 (정적 파일에서 참조 불가한 변수) ── */
+const EVAL_TYPES = {{ eval_types | tojson }};
+const CAMPUS_ORDER=['Campus A','Campus B','Campus C','Campus D','Campus E','Campus F','Campus G','Campus H','Campus I','Campus J','Campus K','Campus L','Campus M','SUB'];
+const CAMPUS_EN={'Campus A':'CMA','Campus B':'CMB','Campus C':'CMC','Campus D':'CMD','Campus E':'CME','Campus F':'CMF','Campus G':'CMG','Campus H':'CMH','Campus I':'CMI','Campus J':'CMJ','Campus K':'CMK','Campus L':'CML','Campus M':'CMM','SUB':'SUB','Unknown':'Unknown'};
+const TYPE_BADGE={position:'badge-type-position',regular:'badge-type-regular',tl:'badge-type-tl',sub:'badge-type-sub',stl:'badge-type-stl'};
+
+// ── TEACHER_LIST tooltip ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  const trigger = document.getElementById('tlTrigger');
+  const tooltip = document.getElementById('tlTooltip');
+  if (!trigger || !tooltip) return;
+
+  let hideTimer;
+
+  function show() {
+    clearTimeout(hideTimer);
+    tooltip.classList.remove('hidden');
+  }
+  function hide() {
+    hideTimer = setTimeout(() => tooltip.classList.add('hidden'), 120);
+  }
+
+  trigger.addEventListener('mouseenter', show);
+  trigger.addEventListener('mouseleave', hide);
+  tooltip.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+  tooltip.addEventListener('mouseleave', hide);
+
+  // 툴팁이 뷰포트 밖으로 나가는 경우 위치 보정
+  trigger.addEventListener('mouseenter', function() {
+    const rect = tooltip.getBoundingClientRect();
+    if (rect.left < 8) {
+      tooltip.style.left = '0';
+      tooltip.style.transform = 'none';
+    } else if (rect.right > window.innerWidth - 8) {
+      tooltip.style.left = 'auto';
+      tooltip.style.right = '0';
+      tooltip.style.transform = 'none';
+    }
+  });
+});
+
+</script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_config.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_sessions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_drafts.js') }}"></script>
+<script>
+// ── Folder Manager (Eval Folders 탭) ──────────────────────────────────────
+
+let _fmNoList = [];
+let _fmNoListAll = [];   // 필터 전 전체 목록
+let _fmHasListAll = [];
+let _fmLoaded = false;
+
+function _fmEsc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function loadFolderManager() {
+  const list = document.getElementById('fmTeacherList');
+  if (!list) return;
+
+  document.getElementById('fmHasCount').textContent = '-';
+  document.getElementById('fmNoCount').textContent = '-';
+  document.getElementById('fmTotalCount').textContent = '-';
+  document.getElementById('fmCreateSection').style.display = 'none';
+  list.innerHTML = '<div class="flex items-center gap-3 py-8 justify-center" style="color:var(--outline)">' +
+    '<div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>' +
+    '<span class="text-sm">Checking folders...</span></div>';
+
+  try {
+    const res = await fetch('/api/v2/annual-eval/folder-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: '{}',
+    });
+    // 서버가 HTML 반환(세션 만료 redirect / 500 오류 페이지 / 크래시 후 restart) 시
+    // JSON 파싱 전에 Content-Type 확인 — 혼란스러운 "Unexpected token '<'" 대신 명확한 메시지.
+    const ctype = res.headers.get('content-type') || '';
+    if (!res.ok || !ctype.includes('application/json')) {
+      if (res.status === 401 || res.status === 403) {
+        throw new Error('Session expired. Please reload and log in again.');
+      }
+      throw new Error(`Server returned ${res.status} (non-JSON). Please retry.`);
+    }
+    const data = await res.json();
+    if (data.status !== 'SUCCESS') throw new Error(data.message);
+
+    _fmHasListAll = data.has_folder || [];
+    _fmNoListAll  = data.no_folder || [];
+    _fmLoaded = true;
+
+    // 캠퍼스 필터 드롭다운 구성
+    const allTeachers = [..._fmNoListAll, ..._fmHasListAll];
+    const campuses = [...new Set(allTeachers.map(t => t.campus).filter(Boolean))].sort();
+    const sel  = document.getElementById('fmCampusSelect');
+    const menu = document.getElementById('fmCampusMenu');
+    sel.innerHTML  = '<option value="">All Campuses</option>';
+    menu.innerHTML = '<div class="dyb-dd-option selected" data-value="" onclick="dybPick(\'fmCampus\',\'\',\'All Campuses\')">All Campuses</div>';
+    campuses.forEach(c => {
+      const code = CAMPUS_EN[c] || c;
+      const label = `${_fmEsc(code)} (${_fmEsc(c)})`;
+      sel.innerHTML += `<option value="${_fmEsc(c)}">${label}</option>`;
+      const div = document.createElement('div');
+      div.className = 'dyb-dd-option';
+      div.dataset.value = c;
+      div.textContent = label;
+      div.onclick = () => dybPick('fmCampus', c, label);
+      menu.appendChild(div);
+    });
+    document.getElementById('fmFilterSection').style.display = '';
+
+    fmApplyFilter();
+  } catch (e) {
+    list.innerHTML = `<div class="text-sm text-center py-6" style="color:#dc2626;">${_fmEsc(e.message)}</div>`;
+  }
+}
+
+function fmApplyFilter() {
+  const campus = document.getElementById('fmCampusSelect').value;
+  const noList  = campus ? _fmNoListAll.filter(t => t.campus === campus) : _fmNoListAll;
+  const hasList = campus ? _fmHasListAll.filter(t => t.campus === campus) : _fmHasListAll;
+  _fmNoList = noList;
+
+  document.getElementById('fmHasCount').textContent = hasList.length;
+  document.getElementById('fmNoCount').textContent = noList.length;
+  document.getElementById('fmTotalCount').textContent = hasList.length + noList.length;
+
+  if (noList.length > 0) {
+    document.getElementById('fmCreateSection').style.display = '';
+    document.getElementById('fmCreateLabel').textContent = `Create ${noList.length} Folder${noList.length > 1 ? 's' : ''}`;
+    document.getElementById('fmCreateBtn').disabled = false;
+  } else {
+    document.getElementById('fmCreateSection').style.display = 'none';
+  }
+
+  _fmRenderList(noList, hasList);
+}
+
+function _fmRenderList(noList, hasList) {
+  const container = document.getElementById('fmTeacherList');
+  if (!noList.length && !hasList.length) {
+    container.innerHTML = '<div class="text-sm text-center py-6" style="color:var(--outline);">No teachers found.</div>';
+    return;
+  }
+
+  let html = '';
+
+  if (noList.length) {
+    html += '<p class="text-xs font-bold mb-2" style="color:#dc2626;"><i class="bi bi-x-circle-fill mr-1"></i>Without folder (' + noList.length + ')</p>';
+    html += '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:20px;">';
+    noList.forEach(t => {
+      const code = CAMPUS_EN[t.campus] || t.campus || '';
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1.5px solid #fca5a5;border-radius:4px;background:var(--primary-soft);">
+        <div>
+          <span class="text-sm font-bold" style="color:var(--on-surface)">${_fmEsc(t.name || t.emp_id)}</span>
+          <span class="text-xs font-mono" style="color:var(--outline);margin-left:6px;">${_fmEsc((t.emp_id||'').toUpperCase())}</span>
+        </div>
+        <span class="text-xs font-semibold" style="color:var(--text-dim)">${_fmEsc(code)}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  if (hasList.length) {
+    html += '<details style="margin-top:4px;">';
+    html += '<summary class="text-xs font-bold cursor-pointer" style="color:#15803d;margin-bottom:8px;"><i class="bi bi-check-circle-fill mr-1"></i>With folder (' + hasList.length + ')</summary>';
+    html += '<div style="display:flex;flex-direction:column;gap:4px;">';
+    hasList.forEach(t => {
+      const code = CAMPUS_EN[t.campus] || t.campus || '';
+      const url = t.folder_url || '#';
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--outline-variant);border-radius:4px;background:var(--surface-lowest);">
+        <div>
+          <span class="text-sm font-bold" style="color:var(--on-surface)">${_fmEsc(t.name || t.emp_id)}</span>
+          <span class="text-xs font-mono" style="color:var(--outline);margin-left:6px;">${_fmEsc((t.emp_id||'').toUpperCase())}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="text-xs font-semibold" style="color:var(--text-dim)">${_fmEsc(code)}</span>
+          <a href="${_fmEsc(url)}" target="_blank" class="text-xs" style="color:var(--primary);text-decoration:none;" title="Open folder"><i class="bi bi-box-arrow-up-right"></i></a>
+        </div>
+      </div>`;
+    });
+    html += '</div></details>';
+  }
+
+  if (!noList.length) {
+    html = '<div class="text-sm text-center py-6" style="color:#15803d;"><i class="bi bi-check-circle-fill mr-1"></i>All teachers have evaluation folders.</div>' + html;
+  }
+
+  container.innerHTML = html;
+}
+
+// ── Duplicate emp_id Audit (여러 nt_* 컬렉션에 동일 사번) ────────────────
+async function fmRunDuplicateAudit() {
+  const panel = document.getElementById('fmDuplicatePanel');
+  const subtitle = document.getElementById('fmDupSubtitle');
+  const summary = document.getElementById('fmDupSummary');
+  const details = document.getElementById('fmDupDetails');
+
+  panel.style.display = 'block';
+  subtitle.textContent = '— checking...';
+  summary.innerHTML = '<span class="text-xs" style="color:var(--text-dim);">Scanning all nt_* collections...</span>';
+  details.innerHTML = '';
+
+  try {
+    const r = await apiFetch('/api/v2/annual-eval/duplicate-audit', {
+      operation: 'Duplicate audit', body: {},
+    });
+    if (!r.ok) throw new Error(r.errorMessage);
+    const data = r.data;
+
+    const count = data.count || 0;
+    subtitle.textContent = `— ${count} duplicate emp_id${count === 1 ? '' : 's'}`;
+
+    if (count === 0) {
+      summary.innerHTML = '<div class="text-sm" style="color:#15803d;"><i class="bi bi-check-circle-fill mr-1"></i>No duplicate emp_ids found across collections.</div>';
+      return;
+    }
+
+    summary.innerHTML = '<div class="text-xs" style="color:var(--on-surface-variant);">' +
+      'Each duplicate emp_id below is resolved to the <strong style="color:#15803d;">primary</strong> collection (DYB > SUB > CREO 3종). ' +
+      '<br>Secondary 쪽 시트 행을 삭제하거나 재배치하면 시트도 정리됩니다.</div>';
+
+    const collLabel = (c) => ({
+      'nt_dyb':         'DYB',
+      'nt_sub':         'SUB',
+      'nt_brand_x': 'Brand X',
+      'nt_brand_y': 'Brand Y',
+      'nt_brand_z':  'Brand Z',
+      'nt_rnd':         'R&D/SIS',
+    }[c] || c);
+
+    let html = '<div style="display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto;">';
+    data.duplicates.forEach(dup => {
+      const primaryLabel = collLabel(dup.primary);
+      html += `<div style="padding:10px 12px;border:1px solid var(--outline-variant);border-radius:4px;background:var(--surface-lowest);">`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">`;
+      html += `<div>`;
+      html += `<span style="font-weight:600;color:var(--on-surface);">${_fmEsc(dup.name || dup.emp_id)}</span>`;
+      html += `<span style="font-size:11px;color:var(--outline);font-family:monospace;margin-left:6px;">${_fmEsc(dup.emp_id)}</span>`;
+      html += `</div>`;
+      html += `<span style="padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;background:#f0fdf4;color:#15803d;">`;
+      html += `PRIMARY · ${_fmEsc(primaryLabel)}</span>`;
+      html += `</div>`;
+      html += `<div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+      dup.occurrences.forEach(occ => {
+        const isPrimary = occ.collection === dup.primary;
+        const bg = isPrimary ? '#f0fdf4' : 'var(--primary-soft)';
+        const color = isPrimary ? '#15803d' : '#b91c1c';
+        const label = collLabel(occ.collection);
+        const campus = occ.campus ? ' · ' + occ.campus : '';
+        html += `<span style="padding:3px 9px;border-radius:4px;font-size:10px;background:${bg};color:${color};font-weight:600;">`;
+        html += `${_fmEsc(label)}${_fmEsc(campus)}`;
+        if (occ.name && occ.name !== dup.name) html += ` · <span style="opacity:.7;">${_fmEsc(occ.name)}</span>`;
+        html += `</span>`;
+      });
+      html += `</div></div>`;
+    });
+    html += '</div>';
+    details.innerHTML = html;
+  } catch (e) {
+    subtitle.textContent = '— failed';
+    summary.innerHTML = `<span class="text-sm" style="color:#b91c1c;">Audit error: ${_fmEsc(e.message)}</span>`;
+  }
+}
+
+
+// ── BV Column Audit (NT Info 시트 BV열 vs Firestore eval_folder_url) ─────
+let _fmAuditLastResult = null;
+
+async function fmRunBvAudit() {
+  const panel = document.getElementById('fmAuditPanel');
+  const subtitle = document.getElementById('fmAuditSubtitle');
+  const summary = document.getElementById('fmAuditSummary');
+  const details = document.getElementById('fmAuditDetails');
+  const actions = document.getElementById('fmAuditActions');
+
+  panel.style.display = 'block';
+  subtitle.textContent = '— checking...';
+  summary.innerHTML = '<span class="text-xs" style="color:var(--text-dim);">Querying sheet + Firestore...</span>';
+  details.innerHTML = '';
+  actions.style.display = 'none';
+
+  try {
+    const r = await apiFetch('/api/v2/annual-eval/bv-audit', {
+      operation: 'BV audit', body: {},
+    });
+    if (!r.ok) throw new Error(r.errorMessage);
+    const data = r.data;
+    _fmAuditLastResult = data;
+
+    subtitle.textContent = `— ${data.total_active} active teachers scanned`;
+
+    const chip = (label, count, bg, color, title) =>
+      `<span title="${_fmEsc(title || '')}" style="padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${bg};color:${color};">${_fmEsc(label)}: ${count}</span>`;
+    const retiredN = data.missing_retired_count || 0;
+    const orphanN  = data.missing_orphan_count || 0;
+    summary.innerHTML = [
+      chip('Matches', data.matches, '#f0fdf4', '#15803d', 'Sheet BV URL matches Firestore URL'),
+      chip('Missing in sheet', data.missing_in_sheet_count, 'var(--primary-soft)', '#b91c1c',
+           'Firestore has eval_folder_url but sheet BV column is empty — likely the real bug'),
+      chip('Retired (expected)', retiredN, '#f0f9ff', '#0369a1',
+           'Sheet BV has URL, emp_id is in nt_retire — this is normal'),
+      chip('Orphan', orphanN, 'var(--primary-soft)', '#b91c1c',
+           'Sheet BV has URL but emp_id exists in neither active nor retire — investigate'),
+      chip('Divergent', data.divergent_count, 'var(--primary-soft)', '#b91c1c',
+           'Both have URLs but they differ'),
+      chip('Both empty', data.both_missing_count, 'var(--surface-low)', 'var(--on-surface-variant)',
+           'Neither sheet nor Firestore has URL — not yet created'),
+    ].join('');
+
+    let html = '';
+    if (data.missing_in_sheet_count > 0) {
+      html += _renderAuditSection('Missing in sheet (BV column empty)', '#b91c1c',
+        data.missing_in_sheet, (e) => `
+          <div style="font-weight:600;color:var(--on-surface);">${_fmEsc(e.name || e.emp_id)}</div>
+          <div style="font-size:11px;color:var(--outline);font-family:monospace;">${_fmEsc(e.emp_id)} · ${_fmEsc(e.campus || '')}</div>
+          <div style="font-size:10px;color:var(--text-dim);word-break:break-all;margin-top:2px;">FS: ${_fmEsc(e.firestore_url)}</div>
+        `);
+    }
+    if (data.divergent_count > 0) {
+      html += _renderAuditSection('Divergent (URLs differ)', '#b91c1c',
+        data.divergent, (e) => `
+          <div style="font-weight:600;color:var(--on-surface);">${_fmEsc(e.name || e.emp_id)}</div>
+          <div style="font-size:11px;color:var(--outline);font-family:monospace;">${_fmEsc(e.emp_id)} · ${_fmEsc(e.campus || '')}</div>
+          <div style="font-size:10px;color:var(--text-dim);word-break:break-all;margin-top:2px;">FS: ${_fmEsc(e.firestore_url)}</div>
+          <div style="font-size:10px;color:var(--text-dim);word-break:break-all;">SH: ${_fmEsc(e.sheet_url)}</div>
+        `);
+    }
+    // 퇴직자 (정상) 과 orphan (조사 대상) 을 분리 표시
+    const retiredList = (data.missing_in_firestore || []).filter(e => e.classification === 'retired');
+    const orphanList  = (data.missing_in_firestore || []).filter(e => e.classification === 'orphan');
+    if (orphanList.length > 0) {
+      html += _renderAuditSection('Orphan (not active, not retired — investigate)', '#b91c1c',
+        orphanList, (e) => `
+          <div style="font-weight:600;color:var(--on-surface);font-family:monospace;">${_fmEsc(e.emp_id)}</div>
+          <div style="font-size:10px;color:var(--text-dim);word-break:break-all;margin-top:2px;">SH: ${_fmEsc(e.sheet_url)}</div>
+        `);
+    }
+    if (retiredList.length > 0) {
+      html += _renderAuditSection('Retired (BV URL remnant — normal)', '#0369a1',
+        retiredList, (e) => `
+          <div style="font-weight:600;color:var(--on-surface);">${_fmEsc(e.name || e.emp_id)}</div>
+          <div style="font-size:11px;color:var(--outline);font-family:monospace;">${_fmEsc(e.emp_id)}${e.retire_date ? ' · ' + _fmEsc(e.retire_date) : ''}</div>
+          <div style="font-size:10px;color:var(--text-dim);word-break:break-all;margin-top:2px;">SH: ${_fmEsc(e.sheet_url)}</div>
+        `);
+    }
+    details.innerHTML = html || '<div class="text-sm" style="color:#15803d;"><i class="bi bi-check-circle-fill mr-1"></i>No divergence detected.</div>';
+
+    if (data.missing_in_sheet_count > 0) {
+      actions.style.display = 'block';
+      document.getElementById('fmAuditFixBtn').innerHTML =
+        `<i class="bi bi-wrench-adjustable"></i> Fix ${data.missing_in_sheet_count} Missing BV Entries`;
+    }
+  } catch (e) {
+    subtitle.textContent = '— failed';
+    summary.innerHTML = `<span class="text-sm" style="color:#b91c1c;">Audit error: ${_fmEsc(e.message)}</span>`;
+  }
+}
+
+function _renderAuditSection(title, color, items, renderItem) {
+  let html = `<details style="margin-top:8px;">`;
+  html += `<summary style="font-size:12px;font-weight:700;cursor:pointer;color:${color};margin-bottom:6px;">`;
+  html += `<i class="bi bi-exclamation-triangle-fill mr-1"></i>${_fmEsc(title)} (${items.length})`;
+  html += `</summary>`;
+  html += `<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:280px;overflow-y:auto;">`;
+  items.forEach(e => {
+    html += `<div style="padding:8px 10px;border:1px solid var(--outline-variant);border-radius:4px;background:var(--surface-lowest);">${renderItem(e)}</div>`;
+  });
+  html += `</div></details>`;
+  return html;
+}
+
+async function fmFixMissingInSheet() {
+  if (!_fmAuditLastResult || !_fmAuditLastResult.missing_in_sheet_count) return;
+  const empIds = _fmAuditLastResult.missing_in_sheet.map(e => e.emp_id);
+  const count = empIds.length;
+  if (!confirm(`Copy Firestore eval_folder_url → NT Info sheet BV column for ${count} teacher${count > 1 ? 's' : ''}?`)) return;
+
+  const result = await BulkRunner.run({
+    items: empIds,
+    chunkSize: 10,
+    title: 'Fixing missing BV entries',
+    subtitle: `${count} rows — writing Firestore URL to NT Info sheet BV column`,
+    url: '/api/v2/annual-eval/bv-fix',
+    bodyKey: 'emp_ids',
+    tallyFn: (res, chunk) => {
+      if (!res || res.status !== 'SUCCESS') return { error: chunk.length };
+      return {
+        success: res.fixed_count || 0,
+        skip:    res.skipped_count || 0,
+        error:   res.failed_count || 0,
+      };
+    },
+  });
+
+  const parts = [];
+  if (result.success > 0) parts.push(`${result.success} fixed`);
+  if (result.skip    > 0) parts.push(`${result.skip} skipped`);
+  if (result.error   > 0) parts.push(`${result.error} failed`);
+  showToast(parts.length ? parts.join(', ') + '.' : 'No changes.', result.error > 0 ? 'error' : 'success');
+
+  // 감사 재실행 + 폴더 리스트 갱신
+  fmRunBvAudit();
+  loadFolderManager();
+}
+
+
+async function fmCreateFolders() {
+  if (!_fmNoList.length) return;
+  const count = _fmNoList.length;
+  if (!confirm(`Create evaluation folders for ${count} teacher${count > 1 ? 's' : ''}?\n${count}명의 교사 평가 폴더를 생성하시겠습니까?\n\nThis may take a while.`)) return;
+
+  const btn = document.getElementById('fmCreateBtn');
+  const label = document.getElementById('fmCreateLabel');
+  btn.disabled = true;
+  label.innerHTML = '<span style="display:inline-block;animation:spin .7s linear infinite;"><i class="bi bi-arrow-clockwise"></i></span> Creating...';
+
+  const empIds = _fmNoList.map(t => t.emp_id);
+  const result = await BulkRunner.run({
+    items: empIds,
+    chunkSize: 10,
+    title: 'Creating evaluation folders',
+    subtitle: `${count}명의 교사 평가 폴더 생성 중...`,
+    url: '/api/v2/annual-eval/create-folders',
+    bodyKey: 'emp_ids',
+    tallyFn: (res, chunk) => {
+      if (!res || res.status !== 'SUCCESS') {
+        return { error: chunk.length };
+      }
+      const results = res.results || [];
+      let success = 0, skip = 0, error = 0;
+      for (const r of results) {
+        if (r.status === 'CREATED') success++;
+        else if (r.status === 'EXISTS') skip++;
+        else error++;
+      }
+      return { success, skip, error };
+    },
+  });
+
+  const parts = [];
+  if (result.success > 0) parts.push(`${result.success} created`);
+  if (result.skip    > 0) parts.push(`${result.skip} already existed`);
+  if (result.error   > 0) parts.push(`${result.error} failed`);
+  if (result.cancelled)   parts.push('cancelled');
+  const msg = parts.length ? parts.join(', ') + '.' : 'No changes.';
+  showToast(msg, result.error > 0 ? 'error' : 'success');
+
+  // 새로고침 (일부라도 성공했거나 cancel 된 경우에도 최신 상태 반영)
+  loadFolderManager();
+  label.textContent = `Create ${count} Folder${count > 1 ? 's' : ''}`;
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

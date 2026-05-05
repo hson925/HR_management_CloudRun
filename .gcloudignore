@@ -1,0 +1,13 @@
+.git
+.gitignore
+venv/
+__pycache__/
+*.pyc
+.env
+firebase-service-account.json
+service-account-key.json
+node_modules/
+tailwind.input.css
+tailwind.config.js
+package.json
+package-lock.json

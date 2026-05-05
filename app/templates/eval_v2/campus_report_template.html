@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>DYB Campus Analysis Report — {{ campus }}</title>
+<style>
+  @font-face {
+    font-family: 'Noto Sans CJK KR';
+    src: local('Noto Sans CJK KR'),
+         url('file:///usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc') format('truetype'),
+         url('file:///usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc') format('truetype');
+    font-weight: normal;
+  }
+  @font-face {
+    font-family: 'Noto Sans CJK KR';
+    src: local('Noto Sans CJK KR Bold'),
+         url('file:///usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc') format('truetype'),
+         url('file:///usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc') format('truetype');
+    font-weight: bold;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'NanumGothic', sans-serif;
+    font-size: 12px; color: #1a1a1a; background: #fff;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: #B01116;
+    padding: 20px 32px 18px;
+    display: flex; justify-content: space-between; align-items: flex-end;
+  }
+  .header-brand { color: rgba(255,255,255,0.55); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; line-height: 1.6; }
+  .header-brand strong { display: block; color: #fff; font-size: 15px; letter-spacing: 0.04em; font-weight: 700; margin-bottom: 2px; }
+  .header-right { text-align: right; }
+  .header-session { color: #fff; font-size: 13px; font-weight: 700; }
+  .header-date { color: rgba(255,255,255,0.5); font-size: 9px; margin-top: 3px; letter-spacing: 0.06em; }
+
+  /* ── Campus band ── */
+  .campus-band {
+    background: #f7f7f8; border-bottom: 2px solid #e4e4e7;
+    padding: 18px 32px;
+  }
+  .campus-name { font-size: 22px; font-weight: 700; color: #111114; }
+  .campus-chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+  .chip { font-size: 10px; font-weight: 600; color: #52525b;
+          background: #e4e4e7; padding: 2px 8px; border-radius: 4px; }
+  .chip-label { color: #71717a; font-weight: 400; margin-right: 3px; }
+
+  /* ── Body ── */
+  .body { padding: 24px 32px; }
+
+  /* ── Section ── */
+  .section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #3f3f46;
+    border-left: 3px solid #B01116; padding-left: 8px;
+    margin-bottom: 12px;
+  }
+
+  /* ── Summary ── */
+  .summary-box {
+    background: #fdf9f9; border: 1px solid #f5d0d1;
+    border-radius: 4px; padding: 16px 20px;
+  }
+  .summary-section { margin-bottom: 14px; page-break-inside: avoid; }
+  .summary-section:last-child { margin-bottom: 0; }
+  .summary-section-title {
+    font-size: 11px; font-weight: 700; color: #B01116;
+    letter-spacing: 0.04em; margin-bottom: 6px;
+    padding-bottom: 4px; border-bottom: 1px solid #f5d0d1;
+  }
+  .summary-section-body {
+    font-size: 12px; line-height: 1.75; color: #18181b;
+    white-space: pre-wrap;
+  }
+
+  /* ── Teacher list (cover page) ── */
+  .teacher-list {
+    background: #fafafa; border: 1px solid #e4e4e7;
+    border-radius: 4px; padding: 12px 16px;
+    font-size: 11px; line-height: 1.8; color: #3f3f46;
+  }
+
+  /* ── Per-teacher page ── */
+  .teacher-section { page-break-before: always; }
+  .teacher-header {
+    border-bottom: 2px solid #B01116;
+    padding-bottom: 10px; margin-bottom: 16px;
+  }
+  .teacher-name { font-size: 18px; font-weight: 700; color: #111114; }
+  .teacher-meta { margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ── Rater block ── */
+  .rater-block { margin-bottom: 16px; page-break-inside: avoid; }
+  .rater-header {
+    font-size: 10px; font-weight: 700; color: #fff;
+    background: #3f3f46; padding: 4px 12px;
+    border-radius: 3px; display: inline-block; margin-bottom: 8px;
+  }
+  .qa-item { margin-bottom: 10px; padding-left: 12px; border-left: 2px solid #e4e4e7; }
+  .qa-question { font-size: 10px; color: #71717a; font-weight: 600; margin-bottom: 4px; }
+  .qa-answer { font-size: 12px; color: #18181b; line-height: 1.7; }
+  .translation-note { font-size: 9px; color: #b45309; margin-top: 3px; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid #e4e4e7; margin: 20px 0; }
+
+  /* ── Footer ── */
+  .footer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 8px 32px; border-top: 1px solid #e4e4e7;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 9px; color: #a1a1aa; background: #fff;
+  }
+
+  @page { size: A4; margin: 0 0 28px 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══ COVER PAGE ═══ -->
+<div class="header">
+  <div class="header-brand">
+    <strong>DYB EDUCATION</strong>
+    Campus Analysis Report / 캠퍼스 종합 보고서
+  </div>
+  <div class="header-right">
+    <div class="header-session">{{ session_label }}</div>
+    <div class="header-date">Generated {{ generated_at }}</div>
+  </div>
+</div>
+
+<div class="campus-band">
+  <div class="campus-name">{{ campus }}</div>
+  <div class="campus-chips">
+    <span class="chip"><span class="chip-label">Campus</span>{{ campus }}</span>
+    <span class="chip"><span class="chip-label">Teachers</span>{{ teacher_count }}</span>
+    <span class="chip"><span class="chip-label">Session</span>{{ session_label }}</span>
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- Campus-level GPT overall -->
+  <div class="section">
+    <div class="section-title">캠퍼스 종합 평가 (AI 분석)</div>
+    <div class="summary-box">
+      {% for sec in campus_summary_sections %}
+      <div class="summary-section">
+        {% if sec.title %}<div class="summary-section-title">{{ sec.title }}</div>{% endif %}
+        <div class="summary-section-body">{{ sec.body }}</div>
+      </div>
+      {% else %}
+      <div class="summary-section-body" style="color:#a1a1aa">요약 내용 없음</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Included teachers list -->
+  <div class="section">
+    <div class="section-title">포함된 교사 ({{ teacher_count }}명)</div>
+    <div class="teacher-list">{{ teacher_list_inline }}</div>
+  </div>
+
+</div>
+
+<!-- ═══ PER-TEACHER PAGES ═══ -->
+{% for tb in teacher_blocks %}
+<div class="teacher-section">
+  <div class="body">
+    <div class="teacher-header">
+      <div class="teacher-name">{{ tb.name }}</div>
+      <div class="teacher-meta">
+        <span class="chip"><span class="chip-label">ID</span>{{ tb.emp_id }}</span>
+        <span class="chip"><span class="chip-label">Type</span>{{ tb.type_label }}</span>
+        <span class="chip"><span class="chip-label">Campus</span>{{ campus }}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">종합 평가 (AI 분석)</div>
+      <div class="summary-box">
+        {% for sec in tb.summary_sections %}
+        <div class="summary-section">
+          {% if sec.title %}<div class="summary-section-title">{{ sec.title }}</div>{% endif %}
+          <div class="summary-section-body">{{ sec.body }}</div>
+        </div>
+        {% else %}
+        <div class="summary-section-body" style="color:#a1a1aa">요약 내용 없음</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if include_original and tb.comments %}
+    <hr class="divider">
+    <div class="section">
+      <div class="section-title">원문 서술형 답변</div>
+      {% for comment in tb.comments %}
+      <div class="rater-block">
+        <div class="rater-header">{{ comment.rater_name }}  ·  {{ comment.rater_role }}</div>
+        {% for ans in comment.answers %}
+        <div class="qa-item">
+          <div class="qa-question">{{ ans.question_ko }}</div>
+          <div class="qa-answer">{{ ans.answer }}</div>
+          {% if ans.translation_pending %}
+          <div class="translation-note">⚠ Translation pending — showing original text</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+<div class="footer">
+  <span>DYB Education — Confidential</span>
+  <span>{{ campus }} · {{ session_label }} · {{ teacher_count }} teachers</span>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,1708 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | Evaluation v2{% endblock %}
+
+{% block extra_head %}
+<script>
+  // My Tasks 진입 시 step-id (사번 입력 화면) flicker 방지 — 페인트 전 즉시 hidden 처리.
+  // CSS 가 즉시 적용되어 사용자에게 step-id 가 보이지 않음. lookupEmployee 실패 시
+  // 같은 dataset 을 비워서 step-id 다시 노출 (fallback).
+  (function() {
+    try {
+      if (new URLSearchParams(location.search).get('fromMyTasks') === '1') {
+        document.documentElement.dataset.fromMyTasks = '1';
+        // DOM ready 즉시 showLoading 호출 — main-wrapper 에 loading-blur-active 클래스 추가하여
+        // 페인트 직후부터 blur 활성. dataset 만으로 blur 걸면 영구 잔존 사고 (Critical 회귀)라
+        // 클래스 결합 패턴 + 함수 호출로 라이프사이클 동기화.
+        document.addEventListener('DOMContentLoaded', function() {
+          if (typeof showLoading === 'function') {
+            showLoading('Loading sessions...', '회차 정보 불러오는 중');
+          }
+        });
+      }
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* fromMyTasks 진입 시 step-id (사번 입력) 영역 숨김. progressBar 는 default hidden + .visible 토글 → 별도 처리 불필요 */
+  html[data-from-my-tasks="1"] #step-id { display: none !important; }
+  /* L-6: Edit Mode 배지 — `.grace-warn-box` 색상 자산 재사용 (annual_eval.html:298-299).
+     dataset.editMode='1' 일 때만 visible. 단순 show/hide 라 클래스 결합 불필요. */
+  #editModeBadge { display: none; }
+  html[data-edit-mode="1"] #editModeBadge { display: inline-flex; }
+  .badge-edit-mode {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(245,158,11,.14); color: #92400e;
+    border: 1.5px solid rgba(245,158,11,.45);
+    border-radius: 9999px; padding: 3px 10px;
+    font-size: 11px; font-weight: 800; letter-spacing: .03em;
+    white-space: nowrap;
+  }
+  html[data-theme="dark"] .badge-edit-mode {
+    background: rgba(245,158,11,.18); color: #fcd34d; border-color: rgba(245,158,11,.45);
+  }
+  /* 빈 화면 차단 — 페이지 페인트 즉시 로딩 오버레이 + main-wrapper blur (J-2).
+     ⚠️ !important 금지: hideLoading 의 inline `display:none` 이 무력화되어 오버레이 영원히 잔존.
+     ⚠️ dataset 라이프사이클: goStep override 의 'confirm' 분기가 dataset 비움 → blur/오버레이 해제.
+     hideLoading 의 클래스 제거만 의존하면 페인트 즉시 ~ DOMContentLoaded 사이 blur 미적용 (사용자 보고). */
+  #fullScreenLoading { display: none; }
+  html[data-from-my-tasks="1"] #fullScreenLoading { display: flex; }
+  html[data-from-my-tasks="1"] #main-wrapper {
+    filter: blur(8px) brightness(.85);
+    -webkit-filter: blur(8px) brightness(.85);
+    pointer-events: none;
+  }
+  /* 오버레이 중앙 정렬 — 사이드바(--sb-w) + 상단바(--hdr-h) 제외한 콘텐츠 영역 중앙.
+     사이드바 토글 시 --sb-w 가 layout.html 에서 갱신 → 별도 JS 없이 자동 대응.
+     기존 Tailwind `lg:pl-64` 는 사이드바 접힘 상태에선 잘못된 offset → page-local rule 우선. */
+  #fullScreenLoading {
+    padding-left: var(--sb-w, 0px) !important;
+    padding-top:  var(--hdr-h, 0px) !important;
+    padding-right: 0;
+    padding-bottom: 0;
+    transition: padding-left .25s;
+  }
+  @media (max-width: 1023px) {
+    #fullScreenLoading {
+      padding-left: 0 !important;  /* 모바일: 사이드바 오버레이 방식 */
+    }
+  }
+  :root {
+    --primary: #B01116;
+    --primary-dark: #870009;
+    --primary-container: #b01116;
+    --surface: #f7f9fb;
+    --surface-lowest: #ffffff;
+    --surface-low: #f2f4f6;
+    --on-surface: #111827;
+    --on-surface-variant: #6b7280;
+    --outline: #9ca3af;
+    --outline-variant: #e5e7eb;
+    --error: #ba1a1a;
+    --dark: #1f2937;
+    --dark-deep: #111827;
+    /* ── Phase G 추가 (다크 매핑은 layout tokens.css 가 자동 override) ── */
+    --primary-soft: rgba(176,17,22,.06);
+    --text-dim: var(--outline);
+    --surface-raised: var(--surface-lowest);
+    --text: #374151;
+    --text-muted: var(--on-surface-variant);
+  }
+
+  /* ── Step 트랜지션 ── */
+  .step { display: none; }
+  .step.active { display: block; animation: stepIn .3s cubic-bezier(.22,.68,0,1.2) both; }
+  .step.leaving { animation: stepOut .2s ease forwards; }
+  @keyframes stepIn  { from { opacity:0; transform:translateY(10px) scale(.99); } to { opacity:1; transform:translateY(0) scale(1); } }
+  @keyframes stepOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(-8px); } }
+
+  /* ── 스텝 인디케이터 ── */
+  .step-indicator {
+    display: flex; align-items: center; gap: 0; overflow: hidden;
+  }
+  .step-dot {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    font-size: 11px; font-weight: 800;
+    border: 2px solid var(--outline-variant);
+    color: var(--on-surface-variant);
+    background: var(--surface-lowest);
+    transition: all .3s cubic-bezier(.22,.68,0,1.2);
+    position: relative; z-index: 1; flex-shrink: 0;
+  }
+  .step-dot.done  { background: var(--strong-bg); border-color: var(--strong-bg); color: #fff; }
+  .step-dot.active { background: var(--primary); border-color: var(--primary); color: #fff;
+    box-shadow: 0 0 0 4px rgba(176,17,22,.15); }
+  .step-line {
+    flex: 1; height: 2px; background: var(--outline-variant);
+    transition: background .3s ease; min-width: 16px;
+  }
+  .step-line.done { background: var(--strong-bg); }
+
+  /* ── 점수 버튼 ── */
+  .score-btn {
+    width: 46px; height: 46px; border-radius: 50%;
+    border: 2px solid var(--outline-variant);
+    font-size: .9rem; font-weight: 800;
+    color: var(--on-surface-variant);
+    cursor: pointer; transition: all .18s cubic-bezier(.22,.68,0,1.2);
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-lowest);
+    position: relative;
+  }
+  .score-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); transform: scale(1.1); }
+  .score-btn.selected {
+    background: var(--primary); border-color: var(--primary-dark); color: #fff;
+    box-shadow: 0 4px 12px rgba(176,17,22,.35);
+    transform: scale(1.08);
+  }
+  /* ── 역할 탭 ── */
+  .role-tab {
+    padding: .45rem 1.1rem; border-radius: 9999px;
+    font-size: .78rem; font-weight: 700;
+    border: 2px solid var(--outline-variant);
+    color: var(--on-surface-variant);
+    cursor: pointer; transition: all .18s; background: var(--surface-lowest);
+  }
+  .role-tab:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+  .role-tab.active { background: var(--primary); border-color: var(--primary-dark); color: #fff;
+    box-shadow: 0 3px 10px rgba(176,17,22,.25); }
+
+  /* ── 프로그레스 바 (fixed) ──
+     left 은 사이드바 너비 (--sb-w) 와 동기화 — 사이드바 토글 시 자동 갱신.
+     모바일 (<1024px) 에선 사이드바가 오버레이라 left:0. */
+  .progress-sticky {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    background: var(--surface);
+    border-bottom: 2px solid var(--outline-variant);
+    padding: 8px 20px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.10);
+    transition: box-shadow .2s, left .2s;
+    display: none;
+  }
+  .progress-sticky.visible { display: block; }
+  @media (min-width: 1024px) {
+    .progress-sticky { left: var(--sb-w, 13rem); }
+  }
+  html[data-theme="dark"] .progress-sticky { background: var(--surface); border-bottom-color: var(--border); }
+  .progress-bar { height: 8px; border-radius: 99px; overflow: hidden; background: var(--outline-variant); }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(to right, #e63946, var(--primary), #870009);
+    background-size: 200% 100%;
+    animation: progressShimmer 2s linear infinite;
+    border-radius: 99px;
+    transition: width .4s cubic-bezier(.22,.68,0,1.2);
+    box-shadow: 0 0 8px rgba(176,17,22,.4);
+  }
+  @keyframes progressShimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+  .progress-label {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;
+  }
+
+  /* ── btn-primary (대시보드 gray-800 스타일) ── */
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    background: var(--strong-bg);
+    color: #fff; font-weight: 700; border: none;
+    border-radius: 12px; cursor: pointer; transition: all .2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--primary); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(176,17,22,.3); }
+  .btn-primary:active:not(:disabled) { transform: translateY(0) scale(.98); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── btn-secondary ── */
+  .btn-secondary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    background: var(--surface-lowest); color: var(--on-surface-variant); font-weight: 700;
+    border: 2px solid var(--outline-variant); border-radius: 12px;
+    cursor: pointer; transition: all .2s;
+  }
+  .btn-secondary:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--outline); background: var(--surface-low); color: var(--on-surface); }
+  .btn-secondary:active:not(:disabled) { transform: translateY(0) scale(.98); }
+
+  /* ── 인풋 ── */
+  input, select, textarea {
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(176,17,22,.1) !important;
+  }
+
+  /* ── 세션 드롭다운 슬라이드 애니메이션 ── */
+  .session-wrap {
+    max-height: 0; overflow: hidden; opacity: 0;
+    text-align: center; /* inline-block wrapper (layout.html의 _upgradeDybSelects 생성) 수평 중앙 정렬 */
+    transition: max-height .35s cubic-bezier(.22,.68,0,1.2), opacity .25s ease, margin .3s ease;
+    margin-bottom: 0;
+  }
+  .session-wrap.open {
+    max-height: 120px; opacity: 1; margin-bottom: 1rem;
+  }
+  /* slide-in 완료 후 overflow 풀어서 커스텀 메뉴(position:absolute) 클리핑 방지 */
+  .session-wrap.overflow-allowed { overflow: visible; max-height: none; }
+
+  /* 메뉴를 트리거(pill) 기준 수평 중앙으로 펼치기. */
+  .session-wrap .dyb-dd-menu {
+    left: 50%; right: auto;
+    transform: translateX(-50%) translateY(-6px) scale(.97);
+    transform-origin: top center;
+  }
+  .session-wrap .dyb-dd-menu.open {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+
+  /* 세션 드롭다운 hover — 전역 .dyb-dd-trigger hover 위에 primary red 강조 */
+  .session-wrap .dyb-dd-trigger {
+    transition: border-color .18s, background .18s, color .18s,
+                box-shadow .18s, transform .18s;
+  }
+  .session-wrap .dyb-dd-trigger:hover {
+    border-color: var(--primary) !important;
+    background: var(--primary-soft) !important;
+    color: var(--primary) !important;
+    box-shadow: 0 4px 14px rgba(176,17,22,.14);
+    transform: translateY(-1px);
+  }
+  .session-wrap .dyb-dd-trigger:hover > .bi-chevron-down { opacity: 1; }
+  .session-wrap .dyb-dd-trigger.open {
+    border-color: var(--primary) !important;
+    background: var(--primary-soft) !important;
+    color: var(--primary) !important;
+  }
+
+  /* 메뉴 option — base 는 본문 텍스트 토큰 (라이트/다크 자동 적응),
+     hover 시 primary red feedback. selected 는 옅은 tint 배경. */
+  .session-wrap .dyb-dd-option {
+    color: var(--text);
+    transition: background .15s, color .15s;
+  }
+  .session-wrap .dyb-dd-option:hover {
+    background: var(--primary-soft);
+    color: var(--primary);
+  }
+  .session-wrap .dyb-dd-option.selected {
+    background: var(--primary-soft);
+    color: var(--text);
+    font-weight: 700;
+  }
+  .session-wrap .dyb-dd-option.selected:hover {
+    color: var(--primary);
+  }
+  /* 세션 옵션 lock 아이콘 (opens/ended) — !important 필수: layout.html 의
+     `.dyb-dd-option:hover .bi { color:#fff !important }` 글로벌 룰을 이겨야 함. */
+  .session-wrap .session-lock-icon { color: var(--on-surface-variant); margin-right: 6px; }
+  html[data-theme="dark"] .session-wrap .session-lock-icon { color: var(--text-muted); }
+  .session-wrap .dyb-dd-option:hover .session-lock-icon,
+  .session-wrap .dyb-dd-option.selected .session-lock-icon { color: var(--primary) !important; }
+  html[data-theme="dark"] .session-wrap .dyb-dd-option:hover .session-lock-icon,
+  html[data-theme="dark"] .session-wrap .dyb-dd-option.selected .session-lock-icon { color: #fca5a5 !important; }
+  html[data-theme="dark"] .session-wrap .dyb-dd-option:hover { background: rgba(176,17,22,.20); color: #fca5a5; }
+  html[data-theme="dark"] .session-wrap .dyb-dd-option.selected { background: rgba(176,17,22,.20); color: var(--text); }
+
+  /* ── 선생님 확인 카드 ── */
+  .teacher-card {
+    background: var(--surface-lowest);
+    border: 2px solid var(--outline-variant);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,.05);
+  }
+  .teacher-card-header {
+    background: var(--strong-bg);
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .teacher-card-body { padding: 7px 14px; }
+  .teacher-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; gap: 10px; flex-wrap: wrap; }
+  .teacher-row > :first-child { flex-shrink: 0; }
+  .teacher-row > :last-child { margin-left: auto; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  .teacher-row + .teacher-row { border-top: 1px solid var(--outline-variant); }
+  /* teacher-card 안쪽은 label·value 가까이 배치 (가로 넓어도 간격 벌어지지 않게) */
+  .teacher-card-body .teacher-row { justify-content: flex-start; gap: 14px; }
+  .teacher-card-body .teacher-row > :last-child { margin-left: 0; text-align: left; }
+
+  /* ── 배지 ── */
+  .badge {
+    display: inline-flex; align-items: center; padding: 2px 10px;
+    border-radius: 9999px; font-size: 11px; font-weight: 700;
+  }
+  .badge-red   { background: #fff1f2; color: var(--primary); border: 1px solid #fecdd3; }
+  .badge-dark  { background: #1f2937; color: #fff; }
+  .badge-gray  { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; font-size: 13px; padding: 3px 12px; }
+  .badge-green { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .badge-blue  { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+
+  /* ── 제출 요약 모달 ── */
+  #summaryOverlay { display:none; }
+  #summaryOverlay.open { display:flex; animation: fadeOverlay .2s ease both; }
+  @keyframes fadeOverlay { from { opacity:0; } to { opacity:1; } }
+  .summary-modal { animation: popIn .3s cubic-bezier(.22,.68,0,1.2) both; max-height: 90vh; display: flex; flex-direction: column; }
+  .summary-modal .summary-modal-scroll { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+  @keyframes popIn { from { opacity:0; transform:scale(.93) translateY(12px); } to { opacity:1; transform:scale(1) translateY(0); } }
+
+  /* ── 로딩 오버레이 ──
+     backdrop-filter 대신 #main-wrapper 에 filter:blur 를 직접 걸어 확실히
+     동작. 오버레이는 body 직속(modals 블록) 으로 이동해 filter 영향 밖. */
+  #fullScreenLoading { background: rgba(17,24,39,.45) !important; }
+  #main-wrapper.loading-blur-active {
+    filter: blur(8px) brightness(.85);
+    -webkit-filter: blur(8px) brightness(.85);
+    transition: filter .18s ease, -webkit-filter .18s ease;
+    pointer-events: none;
+  }
+
+  /* ── 질문 카드 ── */
+  .question-card {
+    border: 2px solid var(--outline-variant);
+    border-radius: 14px;
+    padding: 16px;
+    background: var(--surface-lowest);
+    transition: padding .25s ease, border-color .2s, box-shadow .2s;
+  }
+  .question-card:has(.score-btn.selected, .score-row-v.selected) {
+    border-color: rgba(176,17,22,.25);
+    box-shadow: 0 2px 12px rgba(176,17,22,.06);
+  }
+
+  /* 자동 접힘 (grid-template-rows 트릭) */
+  .question-card .qc-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .28s ease; overflow: hidden; }
+  .question-card .qc-body > .qc-inner { min-height: 0; overflow: hidden; }
+  .question-card.collapsed .qc-body { grid-template-rows: 0fr; }
+  .question-card.collapsed { padding: 10px 14px; cursor: pointer; }
+  .question-card.collapsed:hover { border-color: var(--primary); }
+  /* 확장 완료 후엔 overflow 풀어서 hover scale·box-shadow·tooltip 잘림 방지 */
+  .question-card.overflow-allowed .qc-body { overflow: visible; }
+  .question-card.overflow-allowed .qc-body > .qc-inner { overflow: visible; }
+
+  /* 평가 입력 영역 textarea focus 피드백 (서술형 + 코멘트) */
+  #openQuestionSection textarea:focus, #commentEn:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px rgba(176,17,22,.08); }
+
+  /* 펼친 상태에서 질문 헤더 클릭 → 수동 접기 (답변한 경우만) */
+  .qc-q-header { cursor: pointer; transition: opacity .15s; position: relative; padding-right: 80px;
+                 padding-bottom: 12px; border-bottom: 1.5px solid var(--primary); margin-bottom: 14px !important; }
+  .qc-q-header:hover { opacity: .85; }
+  .qc-q-header:hover .qc-collapse-hint { opacity: .85; }
+  .qc-collapse-hint { font-size: 10px; color: var(--on-surface-variant); opacity: 0; transition: opacity .15s; font-weight: 700; position: absolute; top: 0; right: 0; padding: 4px 8px; border-radius: 6px; background: var(--surface-low); border: 1px solid var(--outline-variant); pointer-events: none; line-height: 1; white-space: nowrap; }
+
+  /* 접힘 시 1줄 요약 */
+  .qc-summary { display: none; align-items: center; gap: 10px; font-size: .82rem; }
+  .question-card.collapsed .qc-summary { display: flex; }
+  .qc-summary .qc-q { font-weight: 800; color: var(--on-surface); flex-shrink: 0; }
+  .qc-summary .qc-check { color: var(--primary); font-weight: 900; }
+  .qc-summary .qc-pill { display: inline-flex; min-width: 26px; height: 22px; padding: 0 8px; border-radius: 11px; background: var(--primary); color: #fff; font-weight: 800; font-size: 11px; align-items: center; justify-content: center; flex-shrink: 0; }
+  .qc-summary .qc-desc { color: var(--on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+  /* 세로 점수 행 (descriptions 있는 문항) */
+  .score-rows-vert { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .score-row-v { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1.5px solid var(--outline-variant); border-radius: 10px; background: var(--surface-lowest); cursor: pointer; transition: border-color .15s, background .15s; }
+  .score-row-v:hover { border-color: var(--primary); background: var(--primary-soft); }
+  .score-row-v.selected { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 2px 8px rgba(176,17,22,.15); }
+  .score-row-v .srv-pill { min-width: 24px; height: 24px; padding: 0 4px; border-radius: 9999px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--surface); border: 1.5px solid var(--outline-variant); font-weight: 800; font-size: .72rem; color: var(--on-surface); transition: background .15s, color .15s, border-color .15s; }
+  .score-row-v.selected .srv-pill { background: var(--primary); border-color: var(--primary-dark); color: #fff; }
+  .score-row-v .srv-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  /* 점수 행: 양쪽 언어 동시 노출. 토글 (body[data-eval-lang]) 에 따라
+     main 언어 = 큰 폰트 + on-surface, sub 언어 = 작은 폰트 + muted + flex-order. */
+  .score-row-v .srv-en,
+  .score-row-v .srv-ko { line-height: 1.35; overflow-wrap: anywhere; }
+  /* main (active 언어) — 큰 폰트, 진한 색, 위쪽 */
+  body[data-eval-lang="en"] .score-row-v .srv-en,
+  body[data-eval-lang="ko"] .score-row-v .srv-ko {
+    font-size: .8rem; font-weight: 600; color: var(--on-surface); order: 0; opacity: 1;
+  }
+  /* sub (반대 언어) — 작은 폰트, 흐린 색, 아래쪽 */
+  body[data-eval-lang="en"] .score-row-v .srv-ko,
+  body[data-eval-lang="ko"] .score-row-v .srv-en {
+    font-size: .7rem; font-weight: 400; color: var(--on-surface-variant); order: 1; opacity: .8;
+  }
+  @media (max-width: 480px) {
+    .score-row-v { padding: 6px 8px; gap: 8px; }
+    .score-row-v .srv-pill { min-width: 20px; height: 20px; padding: 0 4px; font-size: .65rem; }
+    body[data-eval-lang="en"] .score-row-v .srv-en,
+    body[data-eval-lang="ko"] .score-row-v .srv-ko { font-size: .76rem; }
+  }
+
+  /* ── 헤더 배너 (대시보드 일치) ── */
+  .eval-header-banner {
+    background: var(--surface-lowest);
+    border-radius: 20px;
+    border: 1px solid var(--outline-variant);
+    box-shadow: 0 2px 12px rgba(0,0,0,.05);
+    position: relative; overflow: hidden;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .eval-header-banner::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background: var(--primary); border-radius: 20px 20px 0 0;
+  }
+  .eval-header-banner::after {
+    content:''; position:absolute; top:-20px; right:-20px;
+    width:160px; height:160px; border-radius:50%;
+    background: var(--primary); opacity:.04; filter:blur(40px);
+    pointer-events:none;
+  }
+
+  /* ── 완료 체크 애니메이션 ── */
+  @keyframes checkPop {
+    0%   { transform: scale(0) rotate(-10deg); opacity:0; }
+    60%  { transform: scale(1.15) rotate(3deg); opacity:1; }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  .check-anim { animation: checkPop .5s cubic-bezier(.22,.68,0,1.2) .1s both; }
+
+  /* ── OQ 배지 ── */
+  .oq-badge {
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:800;
+    background: #eff6ff; color:#2563eb; border:1px solid #bfdbfe;
+    border-radius:6px; padding:1px 7px; margin-right:6px;
+  }
+
+  /* ── 서브 텍스트 (한국어) ── */
+  .sub-ko {
+    font-size: 13px; color: var(--on-surface-variant);
+    opacity: .7; font-weight: 500; margin-top: 2px; line-height: 1.4;
+  }
+
+  /* ── 툴팁 ── */
+  .tt { position: relative; }
+  .tt::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    background: #1f2937; color: #f9fafb;
+    font-size: 11px; font-weight: 500; line-height: 1.5;
+    padding: 8px 12px; border-radius: 8px;
+    white-space: pre-wrap; max-width: 620px; min-width: 240px; text-align: left;
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+    z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.25);
+  }
+  .tt::before {
+    content: ''; position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-bottom-color: #1f2937;
+    pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 9999;
+  }
+  .tt:hover::after, .tt:hover::before { opacity: 1; }
+
+  /* viewport 하단 충돌 시 위로 flip — JS 가 .tt-flip-up 추가 */
+  .tt.tt-flip-up::after { top: auto; bottom: calc(100% + 8px); }
+  .tt.tt-flip-up::before { top: auto; bottom: calc(100% + 2px); border-bottom-color: transparent; border-top-color: #1f2937; }
+
+  /* ── 언어 토글 (KO/EN) — segmented control 형태 ── */
+  body[data-eval-lang="ko"] [data-lang="en"] { display: none !important; }
+  body[data-eval-lang="en"] [data-lang="ko"] { display: none !important; }
+  .eval-lang-toggle { display: inline-flex; padding: 3px; border: 1.5px solid var(--outline-variant); border-radius: 9999px; background: var(--surface-low); gap: 0; }
+  .eval-lang-toggle .elt-opt { padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 800; color: var(--on-surface-variant); cursor: pointer; transition: background .2s ease, color .2s ease, box-shadow .2s ease; display: inline-flex; align-items: center; gap: 5px; background: transparent; border: none; line-height: 1; }
+  .eval-lang-toggle .elt-opt:not([aria-pressed="true"]):hover { color: var(--primary); }
+  .eval-lang-toggle .elt-opt[aria-pressed="true"] { background: var(--primary); color: #fff; box-shadow: 0 1px 3px rgba(176,17,22,.3); }
+
+  /* ── 첫 방문자용 KO/EN 토글 어텐션 힌트 (펄스 링 + 화살표) ──
+     localStorage 'dyb_eval_lang_seen' 미설정 시 evalLangAttention.show() 가 클래스 추가.
+     5초 또는 사용자 토글 클릭 시 자동 해제. */
+  .eval-lang-toggle.eval-lang-attn { position: relative; }
+  .eval-lang-toggle.eval-lang-attn::after {
+    content: '';
+    position: absolute; inset: -6px;
+    border: 2px solid var(--primary);
+    border-radius: 9999px;
+    animation: evalLangPulse 1.4s ease-out infinite;
+    pointer-events: none;
+  }
+  @keyframes evalLangPulse {
+    0%   { transform: scale(.92); opacity: .85; box-shadow: 0 0 0 0 rgba(176,17,22,.45); }
+    70%  { transform: scale(1.10); opacity: 0;    box-shadow: 0 0 0 14px rgba(176,17,22,0); }
+    100% { transform: scale(1.10); opacity: 0; }
+  }
+  .eval-lang-attn-arrow {
+    position: fixed;
+    /* top/left 은 JS 가 토글 bounding rect 기준으로 주입 */
+    transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    pointer-events: none;
+    animation: evalLangArrowBob 1.2s ease-in-out infinite;
+    z-index: 9999;
+  }
+  .eval-lang-attn-arrow .arrow-tip {
+    width: 0; height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 11px solid var(--primary);
+  }
+  .eval-lang-attn-arrow .arrow-text {
+    font-size: 11px; font-weight: 800; letter-spacing: .03em;
+    color: #fff; background: var(--primary);
+    padding: 4px 10px; border-radius: 9999px;
+    box-shadow: 0 4px 14px rgba(176,17,22,.40);
+    white-space: nowrap;
+  }
+  @keyframes evalLangArrowBob {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50%      { transform: translateX(-50%) translateY(-4px); }
+  }
+  .eval-lang-attn-arrow.fade-out { animation: evalLangArrowFade .3s ease forwards; }
+  @keyframes evalLangArrowFade {
+    to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+     Dark mode — 시맨틱 색 (badge / step-done / tooltip / evalProgress)
+     다크 variant. 중립/표면 토큰은 layout 의 tokens.css 가 자동 override.
+     원칙: hue 유지 + saturation 낮추고 lightness 어둡게,
+     배경은 alpha tint, 텍스트는 라이트 친화적 톤.
+     ════════════════════════════════════════════════════════════════════════ */
+  html[data-theme="dark"] .badge-red   { background: rgba(244,63,94,.16);   color: #fda4af; border-color: rgba(244,63,94,.40); }
+  html[data-theme="dark"] .badge-dark  { background: var(--surface-raised); color: var(--text); }
+  html[data-theme="dark"] .badge-gray  { background: var(--surface-low);    color: var(--text-muted); border-color: var(--outline-variant); }
+  html[data-theme="dark"] .badge-green { background: rgba(34,197,94,.16);   color: #4ade80; border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .badge-blue,
+  html[data-theme="dark"] .oq-badge    { background: rgba(59,130,246,.16);  color: #93c5fd; border-color: rgba(59,130,246,.40); }
+  /* 진행률 pill (#evalProgress) — inline #fff1f2 / #fecdd3 가 다크에서 너무 밝음 */
+  html[data-theme="dark"] #evalProgress { background: rgba(176,17,22,.18) !important; border-color: rgba(176,17,22,.45) !important; }
+  /* 툴팁 — 라이트는 dark 배경 + 흰 텍스트, 다크는 lifted surface + 본문 톤 */
+  html[data-theme="dark"] .tt::after  { background: var(--surface-raised); color: var(--text); box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+  html[data-theme="dark"] .tt::before { border-bottom-color: var(--surface-raised); }
+  html[data-theme="dark"] .tt.tt-flip-up::before { border-top-color: var(--surface-raised); }
+  /* 완료 체크 카드 (step-done) — 인라인 #f0fdf4 / #bbf7d0 / #16a34a 톤다운 */
+  html[data-theme="dark"] #step-done .check-anim { background: rgba(34,197,94,.12) !important; border-color: rgba(34,197,94,.40) !important; }
+  html[data-theme="dark"] #step-done .check-anim i { color: #4ade80 !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── 프로그레스 바 (fixed) ── -->
+<div class="progress-sticky" id="progressBar">
+  <div class="progress-label">
+    <span class="text-xs font-extrabold tracking-wide" style="color:var(--primary)">PROGRESS</span>
+    <span id="evalProgress" class="text-xs font-bold px-2.5 py-1 rounded-full" style="background:#fff1f2;color:var(--primary);border:1px solid #fecdd3;white-space:nowrap;"></span>
+  </div>
+  <div class="progress-bar">
+    <div class="progress-fill" id="progressFill" style="width:0%"></div>
+  </div>
+</div>
+
+{# 로딩 오버레이는 아래 modals 블록으로 이동 (body 직속, filter 영향 밖). #}
+<style>
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:.8;} 50%{transform:scale(1.3);opacity:.4;} }
+</style>
+
+<!-- ── 일반 알림 모달 (페이지 로컬: btn-primary hover lift 유지를 위해 layout.html 글로벌과 별도 유지) ── -->
+<div id="modalOverlay" class="modal-backdrop" style="display:none;z-index:10000;background:rgba(17,24,39,.6);backdrop-filter:blur(6px);">
+  <div class="p-8 rounded-2xl max-w-md w-[92%] text-center shadow-2xl border" style="background:var(--surface-lowest);border-color:var(--outline-variant);">
+    <div id="modalIcon" class="text-5xl mb-4"></div>
+    <h3 id="modalTitle" class="text-xl font-extrabold mb-2.5 tracking-tight whitespace-pre-line" style="color:var(--on-surface)"></h3>
+    <p id="modalText" class="text-base mb-6 whitespace-pre-line leading-relaxed" style="color:var(--on-surface-variant)"></p>
+    <button onclick="closeModal()" class="btn-primary w-full py-3 rounded-xl text-base font-bold">
+      OK
+    </button>
+  </div>
+</div>
+
+<!-- ── 제출 요약 모달 ──
+     글로벌 .modal-backdrop 클래스 사용: 사이드바(--sb-w) / 헤더(--hdr-h) padding 자동 대응 +
+     body 스크롤 잠금 (layout.html 의 MutationObserver 가 토글). 페이지 로컬 lg:pl-64 hardcode 금지. -->
+<div id="summaryOverlay" class="modal-backdrop" style="z-index:10000;background:rgba(17,24,39,.6);backdrop-filter:blur(6px);">
+  <div class="summary-modal rounded-2xl max-w-md w-[92%] shadow-2xl overflow-hidden border" style="background:var(--surface-lowest);border-color:var(--outline-variant);">
+    <div style="background:var(--strong-bg);padding:18px 22px;display:flex;align-items:center;gap:12px;">
+      <i class="bi bi-clipboard-check text-white text-xl"></i>
+      <div>
+        <p class="text-white font-extrabold text-base tracking-tight">Confirm Submission <span class="opacity-60 font-medium text-sm">· 제출 최종 확인</span></p>
+        <p class="sub-ko" style="color:rgba(255,255,255,.85);margin-top:1px;">Please review before submitting · 제출 전 내용을 확인하세요</p>
+      </div>
+    </div>
+    <div class="p-6 space-y-3 summary-modal-scroll" id="summaryBody"></div>
+    <div class="flex gap-3 p-6 pt-0">
+      <button onclick="closeSummary()" class="btn-secondary flex-1 py-3 rounded-xl text-base font-bold">
+        Cancel
+      </button>
+      <button onclick="confirmSubmit()" class="btn-primary flex-1 py-3 rounded-xl text-base font-bold">
+        Submit
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="max-w-3xl mx-auto py-6 px-2 sm:px-4">
+
+  <!-- ── 헤더 배너 ── -->
+  <div class="eval-header-banner">
+    <div class="relative z-10 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div class="p-2.5 rounded-xl border" style="background:var(--surface-low);border-color:var(--outline-variant);box-shadow:0 1px 4px rgba(0,0,0,.06)">
+          <i class="bi bi-clipboard2-pulse text-xl leading-none" style="color:var(--primary)"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-extrabold tracking-tight" style="color:var(--primary)">NET Evaluation</h1>
+            <span class="badge badge-dark text-[10px]">v2</span>
+          </div>
+          <p class="text-[11px] font-medium mt-0.5" style="color:var(--on-surface-variant)">Evaluation Input System — Admin Only <span class="opacity-50">· 평가 입력 시스템</span></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="eval-lang-toggle" role="group" aria-label="Language toggle">
+          <button type="button" class="elt-opt" id="eltKo" onclick="setEvalLang('ko')" title="한국어로 전환" aria-pressed="true">KO</button>
+          <button type="button" class="elt-opt" id="eltEn" onclick="setEvalLang('en')" title="Switch to English" aria-pressed="false">EN</button>
+        </div>
+        <a href="/eval-v2/admin" class="btn-secondary text-xs px-3 py-2 rounded-xl flex items-center gap-1.5">
+          <i class="bi bi-grid-1x2"></i>
+          <span>Admin</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Edit Mode 배지 (L-6) — dataset.editMode='1' 때만 visible ── -->
+  <div class="mb-2 px-1 flex justify-end">
+    <span id="editModeBadge" class="badge-edit-mode">
+      <i class="bi bi-pencil-fill" style="font-size:.65rem"></i>
+      Edit Mode <span style="opacity:.75;font-weight:600">· 수정 모드</span>
+    </span>
+  </div>
+
+  <!-- ── 스텝 인디케이터 ── -->
+  <div class="mb-5 px-1">
+    <div class="step-indicator" id="stepIndicator">
+      <div class="step-dot active" id="dot-1" title="Enter ID">1</div>
+      <div class="step-line" id="line-1"></div>
+      <div class="step-dot" id="dot-2" title="Confirm">2</div>
+      <div class="step-line" id="line-2"></div>
+      <div class="step-dot" id="dot-3" title="Rater Info">3</div>
+      <div class="step-line" id="line-3"></div>
+      <div class="step-dot" id="dot-4" title="Evaluation">4</div>
+      <div class="step-line" id="line-4"></div>
+      <div class="step-dot" id="dot-5" title="Done">
+        <i class="bi bi-check" style="font-size:13px;font-weight:900;"></i>
+      </div>
+    </div>
+    <div class="flex justify-between mt-1.5 px-0.5">
+      <span class="text-[10px] font-semibold" style="color:var(--on-surface-variant)">ID</span>
+      <span class="text-[10px] font-semibold" style="color:var(--on-surface-variant)">Confirm</span>
+      <span class="text-[10px] font-semibold" style="color:var(--on-surface-variant)">Rater</span>
+      <span class="text-[10px] font-semibold" style="color:var(--on-surface-variant)">Eval</span>
+      <span class="text-[10px] font-semibold" style="color:var(--on-surface-variant)">Done</span>
+    </div>
+  </div>
+
+  <!-- ── 메인 카드 ── -->
+  <div class="rounded-2xl border" style="background:var(--surface-lowest);border-color:var(--outline-variant);box-shadow:0 8px 40px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.08);">
+    <div class="h-1" style="background:linear-gradient(to right,var(--primary-dark),var(--primary));border-radius:16px 16px 0 0;"></div>
+
+    <!-- STEP 1 — 사번 입력 -->
+    <div id="step-id" class="step active p-6 sm:p-10">
+      <div class="text-center mb-8">
+        <div class="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-5 border" style="background:var(--surface-low);border-color:var(--outline-variant);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <i class="bi bi-person-badge text-4xl" style="color:var(--primary)"></i>
+        </div>
+        <h2 class="text-2xl font-extrabold tracking-tight" style="color:var(--on-surface)">Enter Employee ID</h2>
+        <p class="text-base font-medium mt-2" style="color:var(--on-surface-variant)">Enter the employee ID of the NET teacher you are evaluating</p>
+        <p class="sub-ko text-center" style="font-size:15px;">평가할 NET 교사의 사번을 입력하세요</p>
+      </div>
+      <div class="max-w-md mx-auto">
+        <input type="text" id="empIdInput" placeholder="e.g. N12345" autocomplete="off"
+          maxlength="6" inputmode="text" pattern="[Nn][0-9]{5}"
+          title="N followed by 5 digits (e.g. N12345)"
+          class="w-full px-4 py-4 border-2 rounded-xl text-lg font-bold placeholder:font-normal placeholder:text-gray-400 text-center tracking-widest uppercase mb-4"
+          style="border-color:var(--outline);color:var(--on-surface);background:var(--surface-low)">
+        <div id="sessionSelectWrap" class="session-wrap">
+          <label class="text-xs font-bold uppercase tracking-wider mb-2 block text-center" style="color:var(--on-surface-variant)">
+            Select Session <span class="normal-case opacity-60 font-medium">· 세션 선택</span>
+          </label>
+          <select id="sessionSelect" class="dyb-select dyb-dd-lg"></select>
+        </div>
+
+        <button onclick="lookupEmployee()" class="btn-primary w-full py-3.5 rounded-xl text-base font-bold tt" data-tip="사번으로 교사를 검색하고 평가 양식을 불러옵니다.&#10;Search for the teacher by employee ID and load the evaluation form.">
+          <i class="bi bi-search text-sm mr-1"></i>
+          Search
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 2 — 선생님 정보 확인 -->
+    <div id="step-confirm" class="step p-6 sm:p-8">
+      <h2 class="text-base font-extrabold tracking-tight mb-1" style="color:var(--on-surface)">Confirm Teacher Info <span class="text-xs font-medium opacity-40">· 선생님 정보 확인</span></h2>
+      <p class="text-xs font-medium mb-1" style="color:var(--on-surface-variant)">Please verify the information below</p>
+      <p class="sub-ko mb-4">아래 정보를 확인해 주세요</p>
+      <div id="teacherInfo" class="teacher-card mb-4 max-w-md mx-auto"></div>
+      <div class="flex gap-3">
+        <button id="confirmReenterBtn" onclick="_mtReenterOrBack()" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm">
+          <i class="bi bi-arrow-left text-xs"></i>
+          <span id="confirmReenterLabel">Re-enter</span>
+        </button>
+        <button onclick="goStep('rater')" class="btn-primary flex-1 py-2.5 rounded-xl text-sm">
+          Correct →
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 3 — 평가자 정보 -->
+    <div id="step-rater" class="step p-6 sm:p-8">
+      <h2 class="text-base font-extrabold tracking-tight mb-1" style="color:var(--on-surface)">Rater Information <span class="text-xs font-medium opacity-40">· 평가자 정보</span></h2>
+      <p class="text-xs font-medium mb-1" style="color:var(--on-surface-variant)">Please enter your information</p>
+      <p class="sub-ko mb-4">아래 정보를 입력해 주세요</p>
+      <div class="space-y-4 max-w-sm mx-auto">
+        <div>
+          <label class="text-xs font-bold uppercase tracking-wider mb-1.5 block" style="color:var(--on-surface-variant)">
+            Your Name <span class="normal-case opacity-50 font-normal">· 이름</span>
+          </label>
+          <input type="text" id="raterName" placeholder="Enter your name · 이름 입력"
+            class="w-full px-4 py-3 border-2 rounded-xl text-sm font-bold focus:outline-none transition-all"
+            style="border-color:var(--outline);color:var(--on-surface);background:var(--surface-low)">
+        </div>
+        <div id="roleSelectGroup">
+          <label class="text-xs font-bold uppercase tracking-wider mb-2 block" style="color:var(--on-surface-variant)">
+            Your Role <span class="normal-case opacity-50 font-normal">· 평가자 역할</span>
+          </label>
+          <div id="roleButtons" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-6 max-w-sm mx-auto">
+        <button onclick="goStep('confirm')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm">
+          <i class="bi bi-arrow-left text-xs"></i> Back
+        </button>
+        <button onclick="startEval()" class="btn-primary flex-1 py-2.5 rounded-xl text-sm tt" data-tip="선택한 역할의 평가 문항 점수 입력을 시작합니다.&#10;Start rating items for the selected role.">
+          Start Evaluation →
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 4 — 평가 문항 -->
+    <div id="step-eval" class="step">
+      <div class="px-6 sm:px-8 pt-6 pb-3">
+        <h2 class="text-base font-extrabold tracking-tight" id="evalRoleTitle" style="color:var(--on-surface)"></h2>
+        <p class="text-xs font-medium mt-0.5" style="color:var(--on-surface-variant)">Select a score for each item below</p>
+        <p class="sub-ko">각 항목에 해당하는 점수를 선택하세요</p>
+      </div>
+      <div class="px-6 sm:px-8 pt-5 pb-0">
+      <div id="questionList" class="space-y-4 mb-6"></div>
+
+      <!-- 서술형 문항 -->
+      <div id="openQuestionSection" class="border-t-2 pt-5 space-y-5 px-6 sm:px-8" style="display:none;border-color:var(--outline-variant)"></div>
+
+      <!-- 고정 코멘트 fallback -->
+      <div id="commentFallback" class="border-t-2 pt-5 px-6 sm:px-8" style="display:none;border-color:var(--outline-variant)">
+        <label class="text-xs font-bold uppercase tracking-wider mb-2 block" style="color:var(--on-surface-variant)">
+          Comment <span class="font-normal normal-case opacity-60">— Optional · 코멘트 (선택)</span>
+        </label>
+        <textarea id="commentEn" rows="3" placeholder="Enter a comment about this teacher (optional)..."
+          class="w-full px-4 py-3 border-2 rounded-xl text-sm resize-none focus:outline-none transition-all"
+          style="border-color:var(--outline-variant);background:var(--surface-low)"></textarea>
+      </div>
+
+      <div class="flex gap-3 mt-5 px-6 sm:px-8 pb-6 sm:pb-8">
+        <button onclick="goStep('rater')" class="btn-secondary flex-1 py-2.5 rounded-xl text-sm">
+          <i class="bi bi-arrow-left text-xs"></i> Back
+        </button>
+        <button onclick="submitEval()" class="btn-primary flex-1 py-2.5 rounded-xl text-sm tt" data-tip="최종 제출 전 입력한 점수를 확인합니다.&#10;Review your scores before final submission.">
+          <i class="bi bi-send text-xs"></i>
+          Submit
+        </button>
+      </div>
+    </div>
+    </div>
+
+    <!-- STEP 5 — 제출 완료 -->
+    <div id="step-done" class="step p-8 text-center">
+      <div class="check-anim w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-5 border-2" style="background:#f0fdf4;border-color:#bbf7d0;box-shadow:0 4px 20px rgba(22,163,74,.12)">
+        <i class="bi bi-check-circle-fill text-4xl" style="color:#16a34a;"></i>
+      </div>
+      <h2 class="text-xl font-extrabold tracking-tight mb-1" style="color:var(--on-surface)">Submitted! <span class="text-base opacity-40">· 제출 완료</span></h2>
+      <p class="text-xs font-medium text-center" style="color:var(--on-surface-variant)">Your evaluation has been submitted successfully</p>
+      <p class="sub-ko text-center mb-3">평가가 성공적으로 제출되었습니다</p>
+      <div class="max-w-xs mx-auto">
+        <button onclick="resetForm()" class="btn-primary w-full py-3 rounded-xl text-sm">
+          <i class="bi bi-plus-circle text-xs"></i>
+          New Evaluation
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- ── 로딩 오버레이 (body 직속, #main-wrapper filter:blur 영향 밖) ──
+     인라인 style 제거 — default 는 CSS `#fullScreenLoading { display: none }` 가 hide.
+     fromMyTasks 모드에선 페이지 페인트 즉시 visible (네트워크 대기 중 빈 화면 차단). -->
+<div id="fullScreenLoading" class="fixed inset-0 z-[10002] flex flex-col items-center justify-center lg:pl-64">
+  <div class="flex flex-col items-center gap-4">
+    <div class="relative">
+      <div class="w-14 h-14 rounded-full" style="border:3px solid rgba(255,255,255,.15);border-top-color:var(--primary);animation:spin 1s linear infinite;"></div>
+      <div class="absolute inset-0 flex items-center justify-center">
+        <div class="w-5 h-5 rounded-full" style="background:var(--primary);opacity:.8;animation:pulse 1s ease infinite;"></div>
+      </div>
+    </div>
+    <p id="loadingText" class="font-bold tracking-tight text-white text-sm">Processing...</p>
+    <p id="loadingTextKo" class="text-xs" style="color:rgba(255,255,255,.45)">Please wait</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/eval_v2/eval_form_common.js') }}"></script>
+<script>
+// ── Portal user 정보 (server inject) — fromMyTasks 자동 채움 + 일반 placeholder 사용 ──
+window.PORTAL_ME = {{ portal_me | tojson }};
+// ── 평가 폼 언어 (KO/EN) — localStorage 우선, 없으면 navigator.language ──
+(function() {
+  let saved = null;
+  try { saved = localStorage.getItem('dyb_eval_lang'); } catch (e) {}
+  const lang = (saved === 'ko' || saved === 'en') ? saved
+             : (navigator.language && navigator.language.toLowerCase().startsWith('en') ? 'en' : 'ko');
+  document.body.setAttribute('data-eval-lang', lang);
+})();
+function setEvalLang(lang) {
+  if (lang !== 'ko' && lang !== 'en') return;
+  if (document.body.getAttribute('data-eval-lang') === lang) { _syncLangToggle(); return; }
+  document.body.setAttribute('data-eval-lang', lang);
+  try { localStorage.setItem('dyb_eval_lang', lang); } catch (e) {}
+  _syncLangToggle();
+  // 사용자가 토글 사용했음을 기록 — 다음 방문부터 어텐션 힌트 비표시.
+  try { localStorage.setItem('dyb_eval_lang_seen', '1'); } catch (e) {}
+  if (typeof evalLangAttention !== 'undefined') evalLangAttention.hide();
+  if (typeof refreshCollapsedSummaries === 'function') refreshCollapsedSummaries();
+  if (typeof refreshPlaceholders === 'function') refreshPlaceholders();
+}
+
+// ── 첫 방문자용 KO/EN 토글 어텐션 힌트 (펄스 링 + 화살표 라벨) ────────
+const evalLangAttention = (function() {
+  let arrowEl = null;
+  let timer = null;
+  let reposHandler = null;
+  function _position() {
+    if (!arrowEl) return;
+    const tgl = document.querySelector('.eval-lang-toggle');
+    if (!tgl) return;
+    const r = tgl.getBoundingClientRect();
+    // 토글 정중앙 아래 10px 에 화살표 tip 이 오도록 (translateX(-50%) 는 CSS).
+    arrowEl.style.left = (r.left + r.width / 2) + 'px';
+    arrowEl.style.top  = (r.bottom + 10) + 'px';
+  }
+  function show() {
+    const tgl = document.querySelector('.eval-lang-toggle');
+    if (!tgl) return;
+    tgl.classList.add('eval-lang-attn');
+    if (!arrowEl) {
+      arrowEl = document.createElement('div');
+      arrowEl.className = 'eval-lang-attn-arrow';
+      arrowEl.innerHTML = '<div class="arrow-tip"></div><div class="arrow-text">언어 변경 / Language</div>';
+      // body 에 직접 append → 어떤 부모의 overflow:hidden 도 안 가림.
+      document.body.appendChild(arrowEl);
+    }
+    _position();
+    // 사이드바 토글, 윈도우 리사이즈, 스크롤 시 재정렬
+    reposHandler = () => _position();
+    window.addEventListener('resize', reposHandler);
+    window.addEventListener('scroll', reposHandler, { passive: true });
+    // 사이드바 width transition (.25s) 동안 매 프레임 reposition.
+    const sb = document.getElementById('sidebar');
+    if (sb) sb.addEventListener('transitionend', reposHandler);
+    // 클릭 직후 layout 반영 지연 보정 — 600ms rAF 루프로 팔로우.
+    let _t0 = performance.now();
+    (function _follow() {
+      _position();
+      if (performance.now() - _t0 < 600 && arrowEl) requestAnimationFrame(_follow);
+    })();
+    clearTimeout(timer);
+    timer = setTimeout(hide, 12000);
+  }
+  function hide() {
+    const tgl = document.querySelector('.eval-lang-toggle');
+    if (tgl) tgl.classList.remove('eval-lang-attn');
+    if (arrowEl) {
+      arrowEl.classList.add('fade-out');
+      setTimeout(() => { if (arrowEl && arrowEl.parentElement) arrowEl.parentElement.removeChild(arrowEl); arrowEl = null; }, 320);
+    }
+    if (reposHandler) {
+      window.removeEventListener('resize', reposHandler);
+      window.removeEventListener('scroll', reposHandler);
+      const sb = document.getElementById('sidebar');
+      if (sb) sb.removeEventListener('transitionend', reposHandler);
+      reposHandler = null;
+    }
+    clearTimeout(timer);
+  }
+  return { show, hide };
+})();
+document.addEventListener('DOMContentLoaded', function() {
+  let seen = false;
+  try { seen = localStorage.getItem('dyb_eval_lang_seen') === '1'; } catch (e) {}
+  if (!seen) {
+    // 페이지 로드 후 살짝 지연시켜 강조 (즉시 표시는 사용자가 인지 전 사라짐)
+    setTimeout(() => evalLangAttention.show(), 600);
+  }
+});
+function toggleEvalLang() {
+  const cur = document.body.getAttribute('data-eval-lang') || 'ko';
+  setEvalLang(cur === 'ko' ? 'en' : 'ko');
+}
+function _syncLangToggle() {
+  const lang = document.body.getAttribute('data-eval-lang') || 'ko';
+  const ko = document.getElementById('eltKo');
+  const en = document.getElementById('eltEn');
+  if (ko) ko.setAttribute('aria-pressed', lang === 'ko' ? 'true' : 'false');
+  if (en) en.setAttribute('aria-pressed', lang === 'en' ? 'true' : 'false');
+}
+document.addEventListener('DOMContentLoaded', _syncLangToggle);
+
+let teacher = null;
+let evalType = '';
+let allRoles = [];
+let selectedRole = null;
+let scores = {};
+let openAnswers = {};
+let selectedSessionId = '';
+let activeSessions = [];
+
+/* ── 로딩 ── */
+function showLoading(t='Processing...', ko='Please wait') {
+  document.getElementById('loadingText').textContent = t;
+  document.getElementById('loadingTextKo').textContent = ko;
+  document.getElementById('fullScreenLoading').style.display = 'flex';
+  const mw = document.getElementById('main-wrapper');
+  if (mw) mw.classList.add('loading-blur-active');
+}
+function hideLoading() {
+  document.getElementById('fullScreenLoading').style.display = 'none';
+  const mw = document.getElementById('main-wrapper');
+  if (mw) mw.classList.remove('loading-blur-active');
+}
+
+/* ── 알림 모달 ── */
+// showModal / closeModal / MODAL_ICON_MAP — 공통 정의는 common/modal_icons.js.
+// 호출부 계약 (showModal(icon, title, text)) 은 그대로 유지.
+
+/* ── 제출 요약 모달 ── */
+function openSummary() {
+  const items = selectedRole?.items || [];
+  const avg = items.length
+    ? (items.reduce((s, item) => s + (scores[item.id] || 0), 0) / items.length).toFixed(2)
+    : '—';
+  // 필수 서술형 답변 미리보기 (있을 때만)
+  const reqOQs = (typeof getRequiredOpenQuestions === 'function') ? getRequiredOpenQuestions() : [];
+  let oqHtml = '';
+  if (reqOQs.length) {
+    // 컴팩트화: OQ 뱃지 + 답변만 한 줄로 (문항 텍스트는 폼에서 이미 봤으므로 생략).
+    const rows = reqOQs.map((oq, i) => {
+      const ans = String(openAnswers[oq.id] || '').trim();
+      const preview = ans.length > 80 ? ans.slice(0, 80) + '…' : ans;
+      return `<div style="border-bottom:1px solid var(--outline-variant);padding:6px 0;">
+        <div class="text-xs flex items-start gap-1.5" style="color:var(--on-surface);white-space:pre-wrap;overflow-wrap:anywhere;">
+          <span class="oq-badge flex-shrink-0">OQ${i+1}</span>
+          <span style="flex:1;min-width:0;">${escapeHtml(preview)}</span>
+        </div>
+      </div>`;
+    }).join('');
+    oqHtml = `<div class="rounded-xl overflow-hidden border mt-3" style="border-color:var(--outline)">
+      <div style="padding:10px 14px;">
+        <div class="text-[10px] font-extrabold uppercase tracking-wider mb-2" style="color:var(--on-surface-variant)">Required Open Answers <span class="opacity-60">· 필수 서술형</span></div>
+        ${rows}
+      </div>
+    </div>`;
+  }
+  const body = document.getElementById('summaryBody');
+  body.innerHTML = `
+    <div class="rounded-xl overflow-hidden border" style="border-color:var(--outline)">
+      <div style="padding:12px 16px;">
+        <div class="teacher-row" style="border-bottom:1px solid var(--outline-variant);padding-bottom:8px;margin-bottom:4px;">
+          <span class="text-sm font-bold" style="color:var(--on-surface-variant)">Teacher <span style="font-size:11px;opacity:.6;font-weight:500">· 선생님</span></span>
+          <span class="text-base font-extrabold" style="color:var(--on-surface)">${escapeHtml(teacher?.name||'')}</span>
+        </div>
+        <div class="teacher-row" style="border-bottom:1px solid var(--outline-variant);padding:8px 0;">
+          <span class="text-sm font-bold" style="color:var(--on-surface-variant)">Rater <span style="font-size:11px;opacity:.6;font-weight:500">· 평가자</span></span>
+          <span class="text-base font-bold" style="color:var(--on-surface)">${escapeHtml(document.getElementById('raterName').value.trim())}</span>
+        </div>
+        <div class="teacher-row" style="padding-top:8px;">
+          <span class="text-sm font-bold" style="color:var(--on-surface-variant)">Role <span style="font-size:11px;opacity:.6;font-weight:500">· 역할</span></span>
+          <span class="badge badge-dark text-sm">${escapeHtml(selectedRole?.label||selectedRole?.role||'')}</span>
+        </div>
+      </div>
+    </div>${oqHtml}`;
+  document.getElementById('summaryOverlay').classList.add('open');
+}
+function closeSummary() { document.getElementById('summaryOverlay').classList.remove('open'); }
+let _submitting = false;
+async function confirmSubmit() {
+  // 더블클릭 방어 — 서버 슬롯 dedup 폐기 후 클라 측 1차 가드.
+  if (_submitting) return;
+  _submitting = true;
+  closeSummary();
+  showLoading(_isEditMode() ? 'Updating...' : 'Submitting...', _isEditMode() ? '수정 저장 중' : 'Please wait');
+  try {
+    const openItems = selectedRole?.open_questions || [];
+    const commentVal = openItems.length ? '' : document.getElementById('commentEn').value.trim();
+    let url, body;
+    if (_isEditMode()) {
+      // L-5: 수정 모드 — update-my-eval 호출 (in-place, version+1)
+      url = '/api/v2/my-tasks/update-my-eval';
+      body = {
+        docId:       _editDocId,
+        scores:      scores,
+        commentEn:   commentVal,
+        openAnswers: openAnswers,
+        version:     _editVersion,
+      };
+    } else {
+      url = '/api/v2/submit-eval';
+      body = {
+        empId:       teacher.emp_id,
+        evalType:    evalType,
+        raterName:   document.getElementById('raterName').value.trim(),
+        raterRole:   selectedRole.role,
+        raterEmpId:  (window.PORTAL_ME && window.PORTAL_ME.emp_id) ? window.PORTAL_ME.emp_id : '',
+        scores:      scores,
+        commentEn:   commentVal,
+        openAnswers: openAnswers,
+        sessionId:   selectedSessionId,
+      };
+    }
+    const res = await api(url, body);
+    hideLoading();
+    if (res.status === 'SUCCESS') {
+      _setEditModeUI(false);
+      goStep('done');
+    } else if (res.code === 'VERSION_CONFLICT' && _isEditMode()) {
+      // L-5: VERSION_CONFLICT — 다른 곳에서 수정됨. reload + 재시도 옵션
+      if (typeof showConfirmModal === 'function') {
+        showConfirmModal({
+          icon: 'warning',
+          title: 'Version Conflict\n버전 충돌',
+          text: 'This evaluation was modified elsewhere.\n다른 곳에서 수정되었습니다. 최신 데이터를 불러올까요?',
+          confirmLabel: 'Reload latest',
+          cancelLabel: 'Discard / 취소',
+          onConfirm: () => { window.location.reload(); },
+          onCancel: () => { window.location.href = '/eval-v2/my-tasks'; },
+        });
+      } else {
+        showModal('warning', 'Version Conflict', res.message || 'Please reload and try again.');
+      }
+    } else {
+      showModal('error', _isEditMode() ? 'Update Failed' : 'Submission Failed', res.message || 'An unknown error occurred.');
+    }
+  } catch(e) {
+    hideLoading();
+    console.error('Submission error:', e);
+    showModal('error', 'Network Error', 'Submission failed. Please check your connection and try again.');
+  } finally {
+    _submitting = false;
+  }
+}
+
+/* ── API ── */
+async function api(url, body) {
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (r.status === 401) { alert('Your session has expired. Please log in again.'); location.href='/login'; throw new Error('Unauthorized'); }
+  return r.json();
+}
+
+/* ── 스텝 이동 + 인디케이터 ── */
+const stepOrder = ['id','confirm','rater','eval','done'];
+function goStep(name) {
+  if (name !== 'eval') document.getElementById('progressBar').classList.remove('visible');
+  const current = document.querySelector('.step.active');
+  if (current) {
+    current.classList.add('leaving');
+    setTimeout(() => { current.classList.remove('active','leaving'); }, 200);
+  }
+  setTimeout(() => {
+    const next = document.getElementById('step-' + name);
+    if (next) next.classList.add('active');
+  }, 180);
+  updateStepIndicator(name);
+}
+
+function updateStepIndicator(name) {
+  const idx = stepOrder.indexOf(name); // 0-based
+  for (let i = 1; i <= 5; i++) {
+    const dot  = document.getElementById('dot-' + i);
+    const line = document.getElementById('line-' + i);
+    dot.classList.remove('active','done');
+    if (i - 1 < idx)  { dot.classList.add('done'); }
+    else if (i - 1 === idx) { dot.classList.add('active'); }
+    if (line) {
+      line.classList.toggle('done', i - 1 < idx);
+    }
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── 직원 조회 ── */
+const NET_EMP_ID_RE = /^n\d{5}$/;
+
+async function lookupEmployee() {
+  // K-2: outer try/finally — fromMyTasks 모드에서 클라 측 early return (NET_EMP_ID_RE 미매칭 등)
+  // 시 오버레이 영구 잔존 차단. SUCCESS / NOT_FOUND 분기는 hideLoading 후라 finally no-op.
+  try {
+    const empId = document.getElementById('empIdInput').value.trim().toLowerCase();
+    if (!empId) { showModal('warning','Required','Please enter an employee ID.'); return; }
+    if (!NET_EMP_ID_RE.test(empId)) {
+      showModal('warning', 'Invalid Format\n형식 오류',
+        'Employee ID must be N followed by 5 digits (e.g. N12345).\n사번은 N 뒤에 숫자 5자리여야 합니다 (예: N12345).');
+      return;
+    }
+    if (activeSessions.length === 0) {
+      showModal('locked','No Active Session','No evaluation session is currently active. Please contact an administrator.');
+      return;
+    }
+    if (activeSessions.length > 1) {
+      if (!selectedSessionId) { showModal('warning','Required','Please select an evaluation session.'); return; }
+    } else if (activeSessions.length === 1) {
+      selectedSessionId = activeSessions[0].id;
+    }
+    // 선택된 세션이 현재 평가 기간인지 확인 (pre-start / post-end 차단)
+    const selSess = activeSessions.find(s => s.id === selectedSessionId);
+    if (selSess) {
+      const today = kstTodayISO();
+      if (selSess.start_date && today < selSess.start_date) {
+        showModal('locked', 'Not Yet Open\n기간 전',
+          `This session opens on ${selSess.start_date}. Please try again after the start date.\n이 세션은 ${selSess.start_date} 부터 시작됩니다. 시작일 이후 다시 시도해 주세요.`);
+        return;
+      }
+      if (selSess.end_date && today > selSess.end_date) {
+        showModal('locked', 'Session Ended\n기간 종료',
+          `This session ended on ${selSess.end_date}. Please contact an administrator.\n이 세션은 ${selSess.end_date} 에 종료되었습니다. 관리자에게 문의해 주세요.`);
+        return;
+      }
+    }
+    showLoading('Looking up employee...', 'Loading employee information');
+    try {
+      const res = await api('/api/v2/get-questions', { empId: empId, sessionId: selectedSessionId });
+      hideLoading();
+      if (res.status === 'NOT_FOUND')      { _mtRevealStepId(); showModal('warning','Not Found','Employee ID not found. Please check and try again.'); return; }
+      if (res.status === 'INVALID_FORMAT') { _mtRevealStepId(); showModal('warning','Invalid Format\n형식 오류', res.message); return; }
+      if (res.status === 'NO_ACTIVE_SESSION') { _mtRevealStepId(); showModal('locked','No Active Session', res.message); return; }
+      if (res.status !== 'OK')             { _mtRevealStepId(); showModal('error','Error', res.message); return; }
+
+      teacher  = res.teacher;
+      evalType = res.evalType;
+      allRoles = res.roles || [];
+
+      /* ── 선생님 카드 렌더 ── */
+      document.getElementById('teacherInfo').innerHTML = `
+        <div class="teacher-card-header">
+          <div class="w-10 h-10 rounded-xl flex-shrink-0" style="background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;">
+            <i class="bi bi-person-fill text-white text-xl"></i>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <p class="text-white font-extrabold text-base tracking-tight" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(teacher.name)}</p>
+            <p class="text-xs" style="color:rgba(255,255,255,.5);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(teacher.emp_id||'').toUpperCase()}</p>
+          </div>
+          <span class="badge badge-red flex-shrink-0">${escapeHtml(res.evalTypeLabel||'')}</span>
+        </div>
+        <div class="teacher-card-body space-y-0">
+          <div class="teacher-row">
+            <span class="text-xs font-bold" style="color:var(--on-surface-variant)">Campus <span style="font-size:9px;opacity:.55;font-weight:400">· 캠퍼스</span></span>
+            <span class="text-sm font-bold" style="color:var(--on-surface)">${escapeHtml(teacher.campus||'')}</span>
+          </div>
+        </div>`;
+      goStep('confirm');
+    } catch(e) {
+      hideLoading();
+      // K-2 inner catch 보강: fromMyTasks 모드에서 fetch 실패 시 모달 + 정리.
+      if (_isFromMyTasks()) {
+        if (typeof _mtRevealStepId === 'function') _mtRevealStepId();
+        showModal('error', 'Network Error\n네트워크 오류',
+          'Failed to load evaluation. Please try again.\n평가 페이지 로드 실패. 다시 시도해 주세요.');
+      }
+    }
+  } finally {
+    // K-2 outer finally: early return 미처리 시 (NET_EMP_ID_RE 미매칭, 세션 검증 실패 등)
+    // 오버레이/blur/dataset 정리. SUCCESS·NOT_FOUND 등은 inner 에서 hideLoading 후라 no-op.
+    //
+    // ⚠️ 의존성: 이 가드는 hideLoading() 이 element.style.display='none' 인라인 set 한다는
+    // 부수효과에 의존. 만약 hideLoading 구현이 "클래스만 토글" 로 바뀌면 이 finally 가
+    // SUCCESS path 에서도 발화 → URL fromMyTasks 제거 + Re-enter 라벨 복원 → 모드 동작 어긋남.
+    // hideLoading 변경 시 이 조건도 함께 갱신 필요 (대안: dataset.fromMyTasks === '1' 검사).
+    if (_isFromMyTasks() && document.getElementById('fullScreenLoading')?.style.display !== 'none') {
+      if (typeof _mtRevealStepId === 'function') _mtRevealStepId();
+    }
+  }
+}
+
+/* ── 초기화 ── */
+// tooltip viewport flip — hover 시 아래 공간 부족하면 위로 띄움
+function _attachTooltipFlip() {
+  document.querySelectorAll('.tt').forEach(el => {
+    if (el.dataset.ttFlipBound) return;
+    el.dataset.ttFlipBound = '1';
+    el.addEventListener('mouseenter', () => {
+      const rect = el.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      el.classList.toggle('tt-flip-up', spaceBelow < 120);
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('empIdInput').addEventListener('keyup', e => { if (e.key === 'Enter') lookupEmployee(); });
+  _attachTooltipFlip();
+
+  // K-3: fromMyTasks 모드 — get-sessions skip. my-tasks 가 이미 활성 세션 검증·전달.
+  // form.html 의 fetch get-sessions 호출은 redundant (~200-500ms 차감).
+  // ⚠️ 활성 세션 검증은 서버 (api_get_questions) 에 위임 — 클라 측 활성 검증 추가 시
+  //    가짜 activeSessions 객체 schema 도 함께 갱신 필요.
+  const _mtParams = new URLSearchParams(location.search);
+  if (_mtParams.get('fromMyTasks') === '1' && _mtParams.get('session')) {
+    const _urlSession = _mtParams.get('session');
+    activeSessions = [{ id: _urlSession, status: 'active' }];  // lookupEmployee 의 length>=1 검사 통과용
+    selectedSessionId = _urlSession;
+    const sel = document.getElementById('sessionSelect');
+    const wrap = document.getElementById('sessionSelectWrap');
+    if (sel) {
+      sel.innerHTML = '';
+      const opt = document.createElement('option');
+      opt.value = _urlSession;
+      opt.textContent = _urlSession;
+      opt.selected = true;
+      sel.appendChild(opt);
+      sel.disabled = false;
+    }
+    if (wrap) {
+      wrap.classList.add('open');
+      setTimeout(() => wrap.classList.add('overflow-allowed'), 380);
+    }
+    // L-5: editDocId 있으면 수정 모드 진입 분기 — 신규 평가 흐름 (lookupEmployee) 대신 _loadMyResponseForEdit
+    const _editDocId = _mtParams.get('editDocId');
+    if (_editDocId && typeof _loadMyResponseForEdit === 'function') {
+      _loadMyResponseForEdit(_mtParams.get('empId') || '', _urlSession, _editDocId);
+    } else if (typeof _autoLookupFromMyTasks === 'function') {
+      _autoLookupFromMyTasks();
+    }
+    return;  // fetch get-sessions skip
+  }
+
+  // 세션 fetch 전 즉시 wrap 을 열고 placeholder 표시 — 로딩 동안 드롭다운이 사라진 듯 보이지 않도록.
+  (function _showSessionLoadingPlaceholder() {
+    const wrap = document.getElementById('sessionSelectWrap');
+    const sel  = document.getElementById('sessionSelect');
+    if (!wrap || !sel) return;
+    sel.innerHTML = '<option value="" disabled selected>Loading sessions...</option>';
+    sel.disabled = true;
+    requestAnimationFrame(() => {
+      wrap.classList.add('open');
+      setTimeout(() => wrap.classList.add('overflow-allowed'), 380);
+    });
+  })();
+  fetch('/api/v2/get-sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(r=>r.json()).then(res=>{
+      if (res.status !== 'SUCCESS') return;
+      activeSessions = (res.sessions||[]).filter(s => s.status === 'active');
+      const wrap = document.getElementById('sessionSelectWrap');
+      const sel  = document.getElementById('sessionSelect');
+      if (activeSessions.length >= 1) {
+        sel.innerHTML = '';
+        sel.disabled = false;
+        const _today = kstTodayISO();
+        activeSessions.forEach(s => {
+          let suffix = '';
+          let iconClass = '';
+          if (s.start_date && _today < s.start_date) {
+            suffix = ` · opens ${s.start_date}`;
+            iconClass = 'bi-lock-fill session-lock-icon';
+          } else if (s.end_date && _today > s.end_date) {
+            suffix = ` · ended ${s.end_date}`;
+            iconClass = 'bi-lock-fill session-lock-icon';
+          } else if (s.passcode_enabled) {
+            // passcode 설정된 세션 — admin/portal 사용자는 bypass 되지만, 정보 인지 차원에서 자물쇠 표시.
+            suffix = ' · passcode';
+            iconClass = 'bi-shield-lock-fill session-lock-icon';
+          }
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.label + suffix;
+          if (iconClass) opt.dataset.icon = iconClass;
+          sel.appendChild(opt);
+        });
+        selectedSessionId = activeSessions[0].id;
+        sel.value = activeSessions[0].id;
+        sel.addEventListener('change', () => { selectedSessionId = sel.value; });
+        // wrap 은 placeholder 단계에서 이미 open. overflow-allowed 만 늦게 토글해 커스텀 메뉴 클리핑 방지.
+        requestAnimationFrame(() => {
+          setTimeout(() => wrap.classList.add('overflow-allowed'), 380);
+        });
+      } else {
+        // active 세션 0건 — placeholder 를 명확한 안내문으로 교체.
+        sel.innerHTML = '<option value="" disabled selected>No active sessions · 진행 중인 회차 없음</option>';
+      }
+      // ── My Tasks 진입 시 URL param 으로 emp_id/session 자동 채움 + lookup ────
+      _autoLookupFromMyTasks();
+    }).catch(() => {
+      console.error('Failed to load sessions');
+      const wrap = document.getElementById('sessionSelectWrap');
+      if (wrap) wrap.innerHTML = '<p class="text-xs text-red-500 py-2 px-3">Failed to load sessions. Please refresh the page.</p>';
+    });
+});
+
+// ── My Tasks 진입 자동화 ───────────────────────────────────────────────────
+// /eval-v2/my-tasks 에서 직원 클릭 → ?empId=X&session=Y&fromMyTasks=1 로 진입.
+// 사용자는 step-confirm (피평가자 확인) → step-rater (rater 자동 채움) → 평가.
+function _isFromMyTasks() {
+  try { return new URLSearchParams(window.location.search).get('fromMyTasks') === '1'; }
+  catch (e) { return false; }
+}
+
+// L-5: 수정 모드 — editDocId URL param 있을 때 진입. window 변수로 폼 라이프사이클 추적.
+let _editDocId = null;
+let _editVersion = null;
+let _editRaterRole = null;
+
+function _isEditMode() {
+  return !!_editDocId;
+}
+
+// L-6: Edit Mode 표시 — dataset.editMode 토글로 CSS rule 활성/비활성
+function _setEditModeUI(on) {
+  try { document.documentElement.dataset.editMode = on ? '1' : ''; } catch (e) {}
+}
+
+// L-5: 수정 모드 진입 — get-questions + get-my-response 병렬 fetch (개선 #2).
+// 응답 doc 의 rater_role 직접 사용 (개선 #1) → portal_role_mappings 매칭 우회.
+async function _loadMyResponseForEdit(empId, sessionId, docId) {
+  if (!empId || !sessionId || !docId) {
+    if (typeof showModal === 'function') showModal('error', 'Invalid Edit', 'Required parameters missing.');
+    return;
+  }
+  showLoading('Loading evaluation...', '평가 데이터 불러오는 중');
+  // empIdInput 미리 채움 (UX — 사용자가 step-id 잠시 보면 깜박임 차단)
+  const empInput = document.getElementById('empIdInput');
+  if (empInput) empInput.value = empId.toUpperCase();
+  try {
+    const [qRes, myRes] = await Promise.all([
+      fetch('/api/v2/get-questions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empId: empId, sessionId: sessionId }),
+      }).then(r => r.json()),
+      fetch('/api/v2/my-tasks/get-my-response', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ docId: docId }),
+      }).then(r => r.json()),
+    ]);
+
+    if (qRes.status !== 'OK') {
+      hideLoading();
+      _mtRevealStepId();
+      showModal('error', 'Load Failed', qRes.message || 'Failed to load evaluation form.');
+      return;
+    }
+    if (myRes.status !== 'SUCCESS') {
+      hideLoading();
+      _mtRevealStepId();
+      showModal('error', 'Load Failed', myRes.message || 'Failed to load your response.');
+      return;
+    }
+
+    teacher = qRes.teacher;
+    evalType = qRes.evalType;
+    allRoles = qRes.roles || [];
+
+    const myResp = myRes.data || {};
+    _editDocId = docId;
+    _editVersion = myResp.version;
+    _editRaterRole = myResp.rater_role || '';
+
+    // selectedRole 직접 set — 응답 doc 의 rater_role 권위 (개선 #1)
+    selectedRole = allRoles.find(r => r.role === _editRaterRole) || null;
+    if (!selectedRole) {
+      hideLoading();
+      _mtRevealStepId();
+      showModal('error', 'Role Mismatch',
+        `The rater role "${_editRaterRole}" no longer exists in this session config.`);
+      return;
+    }
+
+    // 기존 응답 데이터 폼 변수에 미리 set
+    scores = myResp.scores || {};
+    openAnswers = myResp.open_answers || {};
+
+    // raterName + commentEn 채움
+    const nameInput = document.getElementById('raterName');
+    if (nameInput) nameInput.value = myResp.rater_name || '';
+    const commentEnEl = document.getElementById('commentEn');
+    if (commentEnEl) commentEnEl.value = myResp.comment_en || '';
+
+    // teacher 카드 + step-confirm 진입
+    document.getElementById('teacherInfo').innerHTML = `
+      <div class="teacher-card-header">
+        <div class="w-10 h-10 rounded-xl flex-shrink-0" style="background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;">
+          <i class="bi bi-person-fill text-white text-xl"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <p class="text-white font-extrabold text-base tracking-tight" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(teacher.name)}</p>
+          <p class="text-xs" style="color:rgba(255,255,255,.5);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(teacher.emp_id||'').toUpperCase()}</p>
+        </div>
+        <span class="badge badge-red flex-shrink-0">${escapeHtml(qRes.evalTypeLabel||'')}</span>
+      </div>
+      <div class="teacher-card-body space-y-0">
+        <div class="teacher-row">
+          <span class="text-xs font-bold" style="color:var(--on-surface-variant)">Campus <span style="font-size:9px;opacity:.55;font-weight:400">· 캠퍼스</span></span>
+          <span class="text-sm font-bold" style="color:var(--on-surface)">${escapeHtml(teacher.campus||'')}</span>
+        </div>
+      </div>`;
+
+    _setEditModeUI(true);
+    hideLoading();
+    goStep('confirm');
+  } catch (e) {
+    console.error('_loadMyResponseForEdit error', e);
+    hideLoading();
+    _mtRevealStepId();
+    showModal('error', 'Network Error\n네트워크 오류',
+      'Failed to load evaluation. Please try again.\n평가 페이지 로드 실패. 다시 시도해 주세요.');
+  }
+}
+
+// Re-enter 버튼 동작: 일반 진입에선 step-id 로 복귀, fromMyTasks 모드에선 my-tasks 로 redirect.
+function _mtReenterOrBack() {
+  if (_isFromMyTasks()) {
+    window.location.href = '/eval-v2/my-tasks';
+  } else {
+    if (typeof goStep === 'function') goStep('id');
+  }
+}
+
+// step-id 다시 노출 (lookupEmployee 실패 fallback) — fromMyTasks 모드 완전 해제.
+// 1) dataset 비움 → CSS hide 해제
+// 2) URL 의 fromMyTasks 파라미터 제거 → _isFromMyTasks() 도 false 로 정합 (Re-enter 동작 정상)
+// 3) Re-enter 버튼 라벨을 "Re-enter" 로 복원 (라벨 stale 방지)
+// 4) 오버레이 hide — CSS rule 비활성 후 inline display 복원 (J-2 보강)
+function _mtRevealStepId() {
+  try { document.documentElement.dataset.fromMyTasks = ''; } catch (e) {}
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('fromMyTasks')) {
+      url.searchParams.delete('fromMyTasks');
+      window.history.replaceState(null, '', url.toString());
+    }
+  } catch (e) {}
+  const lbl = document.getElementById('confirmReenterLabel');
+  if (lbl) lbl.textContent = 'Re-enter';
+  if (typeof hideLoading === 'function') hideLoading();
+}
+
+// 페이지 로드 시 fromMyTasks 모드면 Re-enter 버튼 라벨 변경
+document.addEventListener('DOMContentLoaded', function() {
+  if (_isFromMyTasks()) {
+    const lbl = document.getElementById('confirmReenterLabel');
+    if (lbl) lbl.textContent = 'Back to My Tasks';
+  }
+});
+function _autoLookupFromMyTasks() {
+  if (!_isFromMyTasks()) return;
+  const params = new URLSearchParams(window.location.search);
+  const empId = (params.get('empId') || '').trim().toLowerCase();
+  const sessionId = (params.get('session') || '').trim();
+  if (!empId) return;
+  // 카드 클릭 → 페이지 진입 → sessions fetch → 80ms 지연 → lookupEmployee 의 자체 showLoading 까지
+  // 약 100~300ms 빈 영역. text 를 "Looking up employee..." 으로 교체해 진행 단계 인지.
+  if (typeof showLoading === 'function') {
+    showLoading('Looking up employee...', 'Loading employee info');
+  }
+  const empInput = document.getElementById('empIdInput');
+  if (empInput) empInput.value = empId.toUpperCase();
+  // 활성 세션 0건 — my-tasks 로 redirect 안내
+  if (!Array.isArray(activeSessions) || !activeSessions.length) {
+    showModal('locked', 'Session Closed\n세션 종료',
+      'This session is no longer active. Returning to My Tasks.\n이 세션은 더 이상 활성 상태가 아닙니다. My Tasks 로 돌아갑니다.');
+    setTimeout(() => { window.location.href = '/eval-v2/my-tasks'; }, 1800);
+    return;
+  }
+  if (sessionId) {
+    const sel = document.getElementById('sessionSelect');
+    const opt = sel ? Array.from(sel.options).find(o => o.value === sessionId) : null;
+    if (opt) {
+      sel.value = sessionId; selectedSessionId = sessionId;
+    } else {
+      // 지정된 세션이 활성 목록에 없음 — 사용자 의도와 다른 세션으로 진행하지 말고 안내
+      showModal('locked', 'Session Expired\n세션 만료',
+        'The selected session has ended or been closed. Returning to My Tasks.\n선택한 세션이 종료되었거나 마감되었습니다. My Tasks 로 돌아갑니다.');
+      setTimeout(() => { window.location.href = '/eval-v2/my-tasks'; }, 1800);
+      return;
+    }
+  }
+  // 약간 지연시켜 input/select DOM 반영 보장.
+  setTimeout(() => { try { lookupEmployee(); } catch (e) {} }, 80);
+}
+// step-rater 진입 시 portal_me 로 raterName/role 자동 채움.
+// portal 로그인 사용자 (PORTAL_ME 정보 보유) 는 role 선택 UI 자체를 숨겨 name 만 입력하도록.
+// 매칭 role 이 0개면 fallback 으로 role 선택 UI 노출 (기존 흐름).
+// '__public__' sentinel 만 포함된 role 은 비로그인 외부 평가자 전용 → portal 사용자 자동 매칭 안 함
+// (myPortalRole 이 portal_users.role 값이라 '__public__' 와 자연 미매칭 — 명시적 가드).
+function _autoFillRaterFromMyTasks() {
+  const roleGroup = document.getElementById('roleSelectGroup');
+  // default: role 선택 UI 표시 (비로그인 / portal 미식별)
+  if (roleGroup) roleGroup.style.display = '';
+
+  if (!window.PORTAL_ME || !window.PORTAL_ME.role) return;
+  const nameInput = document.getElementById('raterName');
+  if (nameInput && !nameInput.value && window.PORTAL_ME.name) {
+    nameInput.value = window.PORTAL_ME.name;
+  }
+  const myPortalRole = (window.PORTAL_ME.role || '').trim();
+  if (!myPortalRole || myPortalRole === '__public__' || !Array.isArray(allRoles) || !allRoles.length) return;
+  // 운영 정책: 한 문항(rater role)의 portal_role_mappings 는 단일 portal_role 매핑 가정.
+  // '__public__' sentinel 은 portal 사용자 매칭 후보 아님 — 명시적 제외 (방어적 가드).
+  const matched = allRoles.find(r => {
+    if (!Array.isArray(r.portal_role_mappings)) return false;
+    return r.portal_role_mappings.some(m => m !== '__public__' && m === myPortalRole);
+  });
+  if (!matched) {
+    // 매핑된 role 없음 — UI 표시 유지 (사용자가 수동 선택)
+    return;
+  }
+  document.querySelectorAll('.role-tab').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.role-tab[data-role="${CSS.escape ? CSS.escape(matched.role) : matched.role}"]`);
+  if (btn) btn.classList.add('active');
+  selectedRole = matched;
+  // 수정 모드에선 scores/openAnswers 보존 (_loadMyResponseForEdit 가 미리 채움)
+  if (!_isEditMode()) {
+    scores = {};
+    openAnswers = {};
+  }
+  // 매칭된 role 자동 선택 완료 → role 선택 UI 숨김 (portal 로그인 사용자만)
+  if (roleGroup) roleGroup.style.display = 'none';
+}
+
+/* ── 역할 버튼 렌더 ── */
+function renderRoleButtons() {
+  const container = document.getElementById('roleButtons');
+  container.innerHTML = '';
+  allRoles.forEach(r => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'role-tab';
+    btn.textContent = r.label || r.role;
+    btn.dataset.role = r.role;
+    btn.onclick = () => {
+      document.querySelectorAll('.role-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedRole = r;
+      // 사용자가 role 명시 변경 시엔 항상 reset (수정 모드에서도 다른 role 로 변경 의도면 scores 무의미)
+      scores = {};
+      openAnswers = {};
+    };
+    container.appendChild(btn);
+  });
+  if (allRoles.length) {
+    // 수정 모드: selectedRole 이 _loadMyResponseForEdit 에서 응답 doc 의 rater_role 로 이미 set.
+    // 그 role 의 button 을 active 로 표시하고 scores/openAnswers 보존.
+    if (_isEditMode() && selectedRole) {
+      const matchBtn = container.querySelector(`.role-tab[data-role="${CSS.escape ? CSS.escape(selectedRole.role) : selectedRole.role}"]`);
+      if (matchBtn) matchBtn.classList.add('active');
+      else container.firstChild.classList.add('active');
+      // scores / openAnswers 보존 (_loadMyResponseForEdit prefill)
+    } else {
+      container.firstChild.classList.add('active');
+      selectedRole = allRoles[0];
+      scores = {};
+      openAnswers = {};
+    }
+  }
+}
+
+const _origGoStep = goStep;
+window.goStep = function(name) {
+  _origGoStep(name);
+  // step-confirm 진입 시 fromMyTasks dataset 비움 → CSS hide/blur/오버레이 모두 자동 해제
+  // (lookupEmployee SUCCESS 분기에서 자연스럽게 호출됨). _isFromMyTasks() 는 URL 기반이라
+  // dataset 변경과 무관 → Re-enter 라벨/동작·_autoFillRaterFromMyTasks 등 모드 동작 유지.
+  if (name === 'confirm') {
+    try { document.documentElement.dataset.fromMyTasks = ''; } catch (e) {}
+  }
+  if (name === 'rater') {
+    renderRoleButtons();
+    _autoFillRaterFromMyTasks();
+  }
+};
+
+/* ── 평가 시작 ── */
+function startEval() {
+  const raterName = document.getElementById('raterName').value.trim();
+  if (!raterName) { showModal('warning','Required','Please enter your name.'); return; }
+  if (!selectedRole) { showModal('warning','Required','Please select your role.'); return; }
+  // 수정 모드에선 scores/openAnswers 보존 (_loadMyResponseForEdit 가 미리 채움)
+  if (!_isEditMode()) {
+    scores = {};
+    openAnswers = {};
+  }
+  renderQuestions();
+  // 수정 모드: renderQuestions 가 카드를 새로 만들 뿐 prefill 처리 안 함 → 명시적 적용
+  if (_isEditMode()) {
+    _prefillExistingResponses();
+  }
+  goStep('eval');
+}
+
+// 수정 모드: scores / openAnswers 변수의 기존 값을 DOM 에 반영.
+// renderQuestions 가 score 카드를 새로 만든 뒤 호출 — 각 카드의 score btn/row 에 selectScore 호출
+// + open question textarea 의 value set.
+function _prefillExistingResponses() {
+  const _esc = (s) => (CSS.escape ? CSS.escape(s) : String(s).replace(/"/g, '\\"'));
+  // 1. score prefill
+  Object.keys(scores || {}).forEach(qid => {
+    const val = scores[qid];
+    if (typeof val !== 'number' || val < 1) return;
+    const card = document.querySelector(`.question-card[data-qid="${_esc(qid)}"]`);
+    if (!card) return;
+    const target = card.querySelector(`.score-btn[data-val="${val}"], .score-row-v[data-val="${val}"]`);
+    if (target && typeof selectScore === 'function') {
+      try { selectScore(target, qid, val); } catch (e) { console.error('prefill score', qid, e); }
+    }
+  });
+  // 2. open answer textarea prefill
+  Object.keys(openAnswers || {}).forEach(oqId => {
+    const div = document.querySelector(`[data-oqid="${_esc(oqId)}"]`);
+    if (!div) return;
+    const ta = div.querySelector('textarea');
+    if (ta) ta.value = String(openAnswers[oqId] || '');
+  });
+  // 3. progress bar 갱신 (selectScore 가 updateProgress 호출하지만 명시 안전)
+  if (typeof updateProgress === 'function') updateProgress();
+}
+
+// renderQuestions / selectScore / reopenCard / collapseCard 는 eval_form_common.js 로 추출됨
+
+/* ── 진행도 ── */
+function updateProgress() {
+  const items = (selectedRole?.items || []);
+  const requiredOQs = (typeof getRequiredOpenQuestions === 'function') ? getRequiredOpenQuestions() : [];
+  const total = items.length + requiredOQs.length;
+  const scoreFilled = items.filter(it => typeof scores[it.id] === 'number' && scores[it.id] >= 1).length;
+  const oqFilled = (typeof getRequiredOpenAnsweredCount === 'function') ? getRequiredOpenAnsweredCount() : 0;
+  const filled = scoreFilled + oqFilled;
+  const pct = total ? Math.round(filled / total * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('evalProgress').textContent = `${filled} / ${total} answered`;
+}
+
+/* ── 제출 (요약 모달 먼저) ── */
+function submitEval() {
+  const items = selectedRole?.items || [];
+  const unanswered = items.filter(item => !(item.id in scores) || scores[item.id] === null || scores[item.id] === undefined || scores[item.id] === '' || scores[item.id] < 1);
+  const requiredOQs = (typeof getRequiredOpenQuestions === 'function') ? getRequiredOpenQuestions() : [];
+  const missingOQs = requiredOQs.filter(oq => !String(openAnswers[oq.id] || '').trim());
+  if (unanswered.length || missingOQs.length) {
+    const parts = [];
+    const partsKo = [];
+    if (unanswered.length) {
+      parts.push(`${unanswered.length} score item${unanswered.length > 1 ? 's' : ''}`);
+      partsKo.push(`점수 ${unanswered.length}개`);
+    }
+    if (missingOQs.length) {
+      parts.push(`${missingOQs.length} required open question${missingOQs.length > 1 ? 's' : ''}`);
+      partsKo.push(`필수 서술형 ${missingOQs.length}개`);
+    }
+    showModal('warning','Incomplete', `Please complete: ${parts.join(' + ')}.\n남은 항목: ${partsKo.join(' + ')}`);
+    return;
+  }
+  openSummary();
+}
+
+/* ── 폼 리셋 ── */
+function resetForm() {
+  // fromMyTasks 모드는 step-id 가 CSS 로 hidden — goStep('id') 호출하면 빈 화면 됨.
+  // "다른 사람 평가하기" 의 자연스러운 동작은 my-tasks 로 돌아가 다른 카드 클릭.
+  if (_isFromMyTasks()) {
+    window.location.href = '/eval-v2/my-tasks';
+    return;
+  }
+  teacher = null; evalType = ''; allRoles = []; selectedRole = null; scores = {}; openAnswers = {};
+  // 세션 드롭다운(visual) 은 그대로 둠 → JS state 도 함께 유지해 desync 방지.
+  // 평가자는 동일 회차에서 다른 피평가자를 이어서 평가하는 경우가 많음. 사용자가
+  // 회차를 바꾸면 onchange 리스너가 selectedSessionId 를 갱신.
+  document.getElementById('empIdInput').value = '';
+  document.getElementById('raterName').value = '';
+  document.getElementById('commentEn').value = '';
+  goStep('id');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,1015 @@
+{% extends "common/layout.html" %}
+{% block title %}DYB NHR | Annual Evaluation{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dyb-datepicker.css') }}">
+<script src="{{ url_for('static', filename='js/dyb-datepicker.js') }}"></script>
+<style>
+  :root {
+    --primary: #870009;
+    --primary-dark: #870009;
+    --surface-low: #f4f4f5;
+    --on-surface: #111114;
+    --on-surface-variant: #52525b;
+    --outline: #71717a;
+    --outline-variant: #d4d4d8;
+    --error: #ba1a1a;
+  }
+
+  /* ── 툴팁 (JS로 위치 계산, overflow 부모 영향 없음) ── */
+  .ae-tooltip {
+    position: fixed;
+    background: var(--strong-bg); color: var(--strong-bg-fg); font-size: .7rem; line-height: 1.55;
+    padding: 7px 11px; border-radius: 4px; white-space: pre-line;
+    pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 99999;
+    min-width: 140px; max-width: 280px; text-align: left;
+    box-shadow: 0 4px 12px rgba(0,0,0,.18);
+  }
+  .ae-tooltip.visible { opacity: 1; }
+
+  /* ── 등급 배지 ── */
+  .ae-grade-badge { display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:50%;font-size:1.5rem;font-weight:900;border:3px solid; }
+  .ae-grade-S  { color:#7c3aed; background:#f5f3ff; border-color:#c4b5fd; }
+  .ae-grade-A  { color:#15803d; background:#f0fdf4; border-color:#86efac; }
+  .ae-grade-B  { color:#1d4ed8; background:#eff6ff; border-color:#93c5fd; }
+  .ae-grade-C  { color:#b45309; background:var(--surface-lowest)beb; border-color:#fde68a; }
+  .ae-grade-D  { color:#dc2626; background:#fef2f2; border-color:#fca5a5; }
+  .ae-grade-F  { color:var(--outline); background:var(--surface-low); border-color:var(--outline-variant); }
+
+  /* ── Help icon button (ⓘ) — 페이지 헤더 + grace 배너에서 사용 ──
+     Light: brand red (#B01116) 톤. Dark: 슬레이트 배경에서 묻히지 않도록
+     밝은 red-400 톤 + 더 높은 alpha 배경. */
+  .ae-help-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(176,17,22,.10);
+    color: var(--primary);
+    border: 1.5px solid var(--primary);
+    cursor: pointer; padding: 0;
+    margin-left: 6px; vertical-align: middle;
+    font-size: 13px; line-height: 1;
+    transition: background .15s, color .15s, border-color .15s, transform .12s;
+  }
+  .ae-help-btn:hover { background: var(--primary); color: #fff; transform: scale(1.08); }
+  .ae-help-btn:active { transform: scale(.96); }
+  .ae-help-btn > i { display: block; line-height: 1; }
+  html[data-theme="dark"] .ae-help-btn {
+    background: rgba(248,113,113,.18);
+    color: #f87171;             /* red-400 — slate 다크 위에서 또렷 */
+    border-color: #ef4444;       /* red-500 */
+  }
+  html[data-theme="dark"] .ae-help-btn:hover {
+    background: #ef4444; color: #fff; border-color: #f87171;
+  }
+  /* grace 배너 안의 help 버튼은 주황 톤 (warning) 으로 자동 매칭 */
+  .grace-warn-box .ae-help-btn {
+    background: rgba(245,158,11,.18);
+    color: #b45309;
+    border-color: #d97706;
+  }
+  .grace-warn-box .ae-help-btn:hover { background: #d97706; color: #fff; border-color: #b45309; }
+  html[data-theme="dark"] .grace-warn-box .ae-help-btn {
+    background: rgba(251,191,36,.20);
+    color: #fcd34d;              /* amber-300 */
+    border-color: #fbbf24;        /* amber-400 */
+  }
+  html[data-theme="dark"] .grace-warn-box .ae-help-btn:hover {
+    background: #f59e0b; color: #1c1c1f; border-color: #fcd34d;
+  }
+
+  /* ── 버튼 ── */
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--strong-bg); color: var(--strong-bg-fg); font-weight: 700;
+    border: 1.5px solid var(--strong-bg); border-radius: 3px;
+    cursor: pointer; transition: all .15s;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-lowest); color: var(--text); font-weight: 600;
+    border: 1.5px solid var(--outline-variant); border-radius: 3px;
+    cursor: pointer; transition: all .15s;
+  }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .btn-secondary:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── 탭 버튼 (config modal용) ── */
+  .tab-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: .4rem .9rem; border-radius: 3px;
+    font-size: .8rem; font-weight: 700;
+    color: var(--on-surface-variant); border: 1.5px solid transparent;
+    cursor: pointer; transition: all .15s; white-space: nowrap; background: transparent;
+  }
+  .tab-btn:hover { color: var(--on-surface); background: var(--surface-low); border-color: var(--outline-variant); }
+  .tab-btn.active { background: var(--strong-bg); color: var(--strong-bg-fg); border-color: var(--strong-bg); }
+
+  /* ── 인풋/셀렉트 ── */
+  input:not([type=checkbox]), textarea {
+    transition: border-color .15s;
+    border-color: var(--outline-variant) !important;
+    border-radius: 3px;
+  }
+  input:not([type=checkbox]):focus, textarea:focus {
+    outline: none;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(135,0,9,.08) !important;
+  }
+  /* ── 배지 ── */
+  .badge-done      { background: #f0fdf4; color: #15803d; border: 1.5px solid #86efac; font-weight: 700; }
+  .badge-inprogress { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #93c5fd; font-weight: 700; }
+  .teacher-row { border: 1.5px solid var(--outline-variant); border-radius: 4px; background: var(--surface-lowest); cursor: pointer; transition: border-color .15s; }
+  .teacher-row:hover { border-color: var(--primary); }
+  .teacher-row.done { border-color: #86efac; background: #f0fdf4; }
+  .teacher-row.done:hover { border-color: #22c55e; }
+
+  /* ── 모달 ── */
+  /* modal-backdrop 은 layout.html 의 공통 CSS 사용 */
+  .modal-box { background: var(--surface); border-radius: 4px; width: 100%; max-height: 88vh; overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 8px 32px rgba(0,0,0,.12); animation: modalIn .15s ease; border: 1.5px solid var(--outline-variant); }
+  @keyframes modalIn { from { opacity:0; transform:scale(.97) translateY(6px) } to { opacity:1; transform:none } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin .7s linear infinite; display:inline-block; }
+  .modal-header { position: sticky; top: 0; background: var(--surface); padding: 18px 22px 14px; border-bottom: 1.5px solid var(--outline-variant); display: flex; justify-content: space-between; align-items: flex-start; z-index: 1; }
+
+  /* ── 에디터 섹션 — 부드러운 접기/펴기 ──
+     max-height + padding + opacity 를 함께 트랜지션. overflow:hidden 으로 접힐 때
+     콘텐츠가 시각적으로 잘리며 줄어듦. JS 가 현재/목표 픽셀 높이를 계산해 주입. */
+  .ae-section-body {
+    display: block;
+    overflow: hidden;
+    transition:
+      max-height      .32s cubic-bezier(.22, 1, .36, 1),
+      opacity         .22s ease-out,
+      padding-top     .32s cubic-bezier(.22, 1, .36, 1),
+      padding-bottom  .32s cubic-bezier(.22, 1, .36, 1);
+  }
+  .ae-chevron {
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1) !important;
+  }
+  /* DYB brand 첨가 — 무채색 테두리에 옅은 red, 헤더 좌측 4px brand strip,
+     focus 시 brand red. 5 섹션 모두 인라인 border-color 를 CSS override 로 통일. */
+  .ae-section {
+    border-color: var(--red-mid, #e8a5a7) !important;
+    box-shadow: 0 4px 14px rgba(176, 17, 22, .18), 0 2px 4px rgba(0, 0, 0, .08);
+  }
+  .ae-section-header {
+    border-bottom-color: var(--red-mid, #e8a5a7) !important;
+    border-left: 4px solid var(--primary);
+    transition: background .15s ease;
+  }
+  .ae-section-header:hover {
+    background: var(--surface-low-hover, var(--primary-soft)) !important;
+  }
+  .ae-section-header:hover .ae-chevron {
+    color: var(--primary) !important;
+  }
+  /* input/textarea focus — brand red border + soft glow + outline (a11y).
+     WCAG 2.1 SC 2.4.7 Focus Visible 준수 — 키보드 사용자도 명확한 focus 표시.
+     outline-offset 2px 로 box-shadow glow 와 시각 분리. */
+  .ae-section input:focus,
+  .ae-section textarea:focus,
+  #aeAllowanceComment:focus,
+  #aeOtherEng:focus {
+    border-color: var(--primary) !important;
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--primary-soft);
+  }
+
+  /* ── 커스텀 애니메이션 드롭다운 (모달 내 모든 select)
+     클래스 prefix 'ae-sel-*' — layout.html 의 기존 .dyb-select (pill 네이티브)
+     와 충돌 방지. content-based 너비, 사각 테두리, viewport 기준 패널. */
+  .ae-sel {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 100%;
+  }
+  .ae-sel > select.ae-sel-native {
+    position: absolute !important;
+    width: 1px !important; height: 1px !important;
+    opacity: 0 !important; pointer-events: none !important;
+    margin: 0 !important; padding: 0 !important;
+    border: 0 !important; overflow: hidden !important;
+    clip: rect(0 0 0 0);
+    appearance: none !important; -webkit-appearance: none !important;
+  }
+  /* border-width/color 를 4 변 개별 프로퍼티로 분리 — Tailwind preflight
+     (`border-width: 0`) 가 shorthand 만 덮었을 때 하단 두께 유실을 차단.
+     개별 프로퍼티는 `:hover` 등 상태 규칙의 `border-color` 와 충돌하지 않음. */
+  .ae-sel-trigger {
+    width: auto;
+    display: inline-flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-size: .875rem; font-weight: 500;
+    padding: 7px 12px;
+    border-style: solid;
+    border-width: 2px;
+    border-color: var(--outline);
+    border-radius: 4px;
+    background: var(--surface-lowest); color: var(--on-surface); cursor: pointer; text-align: left;
+    transition: border-color .15s, box-shadow .15s;
+    outline: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  .ae-sel-trigger::-moz-focus-inner { border: 0; padding: 0; }
+  .ae-sel-trigger:hover { border-color: var(--on-surface-variant); }
+  .ae-sel.open .ae-sel-trigger { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(135, 0, 9, .15); }
+  .ae-sel-trigger:focus,
+  .ae-sel-trigger:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(135, 0, 9, .22);
+  }
+  .ae-sel-native:disabled + .ae-sel-trigger {
+    opacity: 0.6; cursor: not-allowed; background: var(--surface-low);
+  }
+  .ae-sel-label {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--on-surface);
+  }
+  .ae-sel-label.placeholder { color: var(--text-dim); }
+  .ae-sel-caret {
+    font-size: .65rem; color: var(--outline); flex-shrink: 0;
+    transition: transform .38s cubic-bezier(.22, 1, .36, 1);
+  }
+  .ae-sel.open .ae-sel-caret { transform: rotate(180deg); }
+
+  /* 패널 position: fixed — 부모 overflow 에 의해 잘리지 않도록 viewport 기준.
+     max-height 는 open() 시 JS 가 콘텐츠 offsetHeight 로 즉시 snap (애니메이션 없음).
+     "옵션 즉시 보임" UX 를 위해 max-height 트랜지션 제거 → 프레임 1 에 모든 옵션이
+     자리를 차지하고, opacity + transform 페이드/확장만 애니메이션. */
+  .ae-sel-panel {
+    position: fixed;
+    z-index: 9999;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-6px) scaleY(.96);
+    transform-origin: top center;
+    pointer-events: none;
+    transition:
+      opacity   .18s ease-out,
+      transform .24s cubic-bezier(.22, 1, .36, 1);
+    will-change: transform, opacity;
+  }
+  .ae-sel.open .ae-sel-panel {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    pointer-events: auto;
+    /* max-height 는 JS 가 contentHeight 로 설정 */
+  }
+  .ae-sel-panel-inner {
+    overflow-y: auto; overflow-x: hidden;
+    max-height: 280px;
+    background: var(--surface);
+    border: 2px solid var(--outline); border-radius: 4px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.18);
+  }
+  .ae-sel-option {
+    display: block; width: 100%; text-align: left;
+    padding: 9px 12px;
+    font-size: .875rem; font-weight: 500;
+    color: var(--on-surface); background: var(--surface);
+    border: 0; cursor: pointer;
+    transition: background .12s;
+  }
+  .ae-sel-option + .ae-sel-option { border-top: 1px solid var(--outline-variant); }
+  .ae-sel-option:hover,
+  .ae-sel-option.highlighted { background: var(--surface-low); }
+  .ae-sel-option.selected { background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+
+  /* ── 시맨틱 안내/대시보드 박스 (라이트 + 다크 변형) ── */
+  .info-box     { background: #eff6ff; border: 1.5px solid #93c5fd; }
+  .info-box-text { color: #1d4ed8; }
+  .success-box  { background: #f0fdf4; border: 1.5px solid #86efac; }
+  .success-box-text { color: #15803d; }
+  .warn-box     { background: var(--surface-lowest)beb; border: 1.5px solid #fde68a; }
+  .warn-box-text { color: #b45309; }
+  .danger-box   { background: #fef2f2; border: 1.5px solid #fca5a5; }
+  .danger-box-text { color: #dc2626; }
+  .purple-box   { background: #f5f3ff; border: 1.5px solid #c4b5fd; }
+  .purple-box-text { color: #7c3aed; }
+  .gray-box     { background: var(--surface-lowest); border: 1.5px solid var(--outline-variant); }
+  .gray-box-text { color: var(--text); }
+  .grace-warn-box { background: var(--surface-lowest)7ed; border: 1.5px solid #f59e0b; color: #92400e; }
+  .grace-warn-box .grace-warn-icon { color: #d97706; }
+
+  .success-box-divider { border-top: 1.5px solid #86efac; }
+  html[data-theme="dark"] .success-box-divider { border-top-color: rgba(34,197,94,.40); }
+
+  /* unlock 버튼 (이전 사이클 편집 모드) — amber 시맨틱 */
+  .unlock-btn { border-color: #f59e0b !important; color: #b45309 !important; }
+  html[data-theme="dark"] .unlock-btn { border-color: rgba(245,158,11,.45) !important; color: #fbbf24 !important; }
+
+  /* aeRaisePolicyBox — info-box 패턴 재사용 */
+
+  /* Eval # 인디케이터 — indigo 시맨틱 */
+  .eval-num-color { color: #6366f1; }
+  html[data-theme="dark"] .eval-num-color { color: #a5b4fc; }
+
+  /* ── 다크 모드 시맨틱 변형 ── */
+  html[data-theme="dark"] .info-box     { background: rgba(59,130,246,.12); border-color: rgba(59,130,246,.40); }
+  html[data-theme="dark"] .info-box-text { color: #93c5fd; }
+  html[data-theme="dark"] .success-box  { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .success-box-text { color: #86efac; }
+  html[data-theme="dark"] .warn-box     { background: rgba(217,119,6,.12); border-color: rgba(217,119,6,.40); }
+  html[data-theme="dark"] .warn-box-text { color: #fcd34d; }
+  html[data-theme="dark"] .danger-box   { background: rgba(220,38,38,.12); border-color: rgba(220,38,38,.40); }
+  html[data-theme="dark"] .danger-box-text { color: #fca5a5; }
+  html[data-theme="dark"] .purple-box   { background: rgba(124,58,237,.12); border-color: rgba(124,58,237,.40); }
+  html[data-theme="dark"] .purple-box-text { color: #c4b5fd; }
+  html[data-theme="dark"] .grace-warn-box { background: rgba(245,158,11,.14); border-color: rgba(245,158,11,.40); color: #fcd34d; }
+  html[data-theme="dark"] .grace-warn-box .grace-warn-icon { color: #fbbf24; }
+  /* 등급 배지 다크 */
+  html[data-theme="dark"] .ae-grade-S  { background: rgba(124,58,237,.16); border-color: rgba(124,58,237,.45); color: #c4b5fd; }
+  html[data-theme="dark"] .ae-grade-A  { background: rgba(34,197,94,.16);  border-color: rgba(34,197,94,.45);  color: #86efac; }
+  html[data-theme="dark"] .ae-grade-B  { background: rgba(59,130,246,.16); border-color: rgba(59,130,246,.45); color: #93c5fd; }
+  html[data-theme="dark"] .ae-grade-C  { background: rgba(217,119,6,.16);  border-color: rgba(217,119,6,.45);  color: #fcd34d; }
+  html[data-theme="dark"] .ae-grade-D  { background: rgba(220,38,38,.16);  border-color: rgba(220,38,38,.45);  color: #fca5a5; }
+  /* badge-done / badge-inprogress 다크 */
+  html[data-theme="dark"] .badge-done       { background: rgba(34,197,94,.16); color: #86efac; border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .badge-inprogress { background: rgba(59,130,246,.16); color: #93c5fd; border-color: rgba(59,130,246,.40); }
+  html[data-theme="dark"] .teacher-row.done       { background: rgba(34,197,94,.10); border-color: rgba(34,197,94,.40); }
+  html[data-theme="dark"] .teacher-row.done:hover { border-color: #22c55e; }
+  /* Tailwind 시맨틱 유틸리티 다크 (페이지에 사용된 분량) */
+  html[data-theme="dark"] .bg-white       { background-color: var(--surface) !important; }
+  html[data-theme="dark"] .bg-gray-50     { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .bg-gray-100    { background-color: var(--surface-low) !important; }
+  html[data-theme="dark"] .text-gray-400  { color: var(--text-dim) !important; }
+  html[data-theme="dark"] .text-gray-500  { color: var(--text-muted) !important; }
+  html[data-theme="dark"] .text-gray-600,
+  html[data-theme="dark"] .text-gray-700,
+  html[data-theme="dark"] .text-gray-800,
+  html[data-theme="dark"] .text-gray-900 { color: var(--text) !important; }
+  html[data-theme="dark"] .border-gray-100,
+  html[data-theme="dark"] .border-gray-200,
+  html[data-theme="dark"] .border-gray-300 { border-color: var(--border) !important; }
+
+  /* ── Dashboard cards as clickable status filter ─────────────────────────
+     hover lift + active card outline. 활성 카드는 aria-pressed="true". */
+  .ae-dash-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+  .ae-dash-card:focus-visible { outline-color: var(--primary) !important; }
+  .ae-dash-card[aria-pressed="true"] { outline-color: var(--primary) !important; box-shadow: 0 4px 14px rgba(176,17,22,.18); }
+  html[data-theme="dark"] .ae-dash-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+  html[data-theme="dark"] .ae-dash-card[aria-pressed="true"] { box-shadow: 0 4px 14px rgba(176,17,22,.30); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:900px;margin:0 auto;">
+
+  <!-- 페이지 헤더 + 툴바 -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h2 class="text-lg font-extrabold" style="color:var(--on-surface)">
+        <i class="bi bi-award-fill mr-1.5" style="color:var(--primary)"></i>Annual Evaluation
+        <button type="button" class="ae-help-btn" onclick="aeShowGraceHelp()"
+                aria-label="About Grace period"
+                data-tip="What is Grace period?&#10;유예 기간이란?">
+          <i class="bi bi-info-circle-fill"></i>
+        </button>
+      </h2>
+      <p class="text-xs mt-0.5" style="color:var(--outline)">
+        Hire-date anniversary evaluation · Click a teacher row to open the editor
+        <span style="display:block;font-size:.65rem;color:var(--text-dim);margin-top:1px;">입사일 기준 연간 평가 · 교사 클릭 시 에디터 오픈</span>
+      </p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="relative" style="flex:1 1 240px;min-width:240px">
+        <i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:13px;pointer-events:none"></i>
+        <input id="aeSearchInput" type="text" placeholder="Search name, emp ID, campus..."
+          oninput="clearTimeout(window._aeSearchTimer);window._aeSearchTimer=setTimeout(loadAnnualEvalList,350)"
+          class="w-full text-sm pl-8 pr-3 py-2 border" style="border-color:var(--outline-variant);border-radius:3px;background:var(--surface-lowest);color:var(--text-strong)">
+      </div>
+      <select id="aeCampusSelect" onchange="loadAnnualEvalList()"
+        class="text-sm px-3 py-2" style="min-width:100px;">
+        <option value="">All</option>
+      </select>
+      <select id="aePositionFilter" onchange="loadAnnualEvalList()"
+        class="text-sm px-3 py-2" style="min-width:100px;">
+        <option value="">All Types</option>
+        <option value="regular">Regular</option>
+        <option value="tl">TL</option>
+        <option value="sub">Sub</option>
+        <option value="stl">STL</option>
+        <option value="position">Position</option>
+      </select>
+      <select id="aeSortSelect" onchange="aeApplySort()" class="text-sm px-3 py-2" style="min-width:130px;">
+        <option value="deadline">Deadline ↑</option>
+        <option value="deadline_desc">Deadline ↓</option>
+        <option value="name">Name A→Z</option>
+        <option value="score">Score ↓</option>
+        <option value="status">Status</option>
+      </select>
+      <button onclick="aeBulkGenerate()" class="btn-secondary px-3 py-2 text-sm" data-tip="Generate reports for all teachers with status 'done'&#10;상태가 'done'인 모든 교사 보고서 일괄 생성">
+        <i class="bi bi-files"></i> Bulk Generate
+      </button>
+      <button onclick="aeExportExcel()" class="btn-secondary px-3 py-2 text-sm" data-tip="Export teacher list as CSV/Excel&#10;교사 목록 CSV 다운로드">
+        <i class="bi bi-download"></i> Export
+      </button>
+      <button onclick="openAeConfigModal()" class="btn-secondary px-3 py-2 text-sm" data-tip="Configure score weights, raters &amp; raise policy&#10;점수 비중 · 평가자 · 급여 인상 정책 설정">
+        <i class="bi bi-gear-fill"></i> Config
+      </button>
+    </div>
+  </div>
+
+  <!-- Dashboard Summary Cards (클릭 가능한 status 필터 — aeApplyStatusFilter 토글) -->
+  <div id="aeDashboard" style="display:none;margin-bottom:16px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+      <div class="danger-box ae-dash-card" data-bucket="overdue" onclick="aeApplyStatusFilter('overdue')" role="button" tabindex="0" aria-pressed="false" style="border-radius:4px;padding:12px 16px;text-align:center;cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, outline-color .15s ease;outline:2px solid transparent;outline-offset:2px;">
+        <div id="aeDashOverdue" class="danger-box-text" style="font-size:1.6rem;font-weight:900;line-height:1.1;">0</div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--text-muted);margin-top:3px;text-transform:uppercase;letter-spacing:.05em;">Overdue</div>
+      </div>
+      <div class="warn-box ae-dash-card" data-bucket="due_30" onclick="aeApplyStatusFilter('due_30')" role="button" tabindex="0" aria-pressed="false" style="border-radius:4px;padding:12px 16px;text-align:center;cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, outline-color .15s ease;outline:2px solid transparent;outline-offset:2px;">
+        <div id="aeDashThisMonth" class="warn-box-text" style="font-size:1.6rem;font-weight:900;line-height:1.1;">0</div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--text-muted);margin-top:3px;text-transform:uppercase;letter-spacing:.05em;">Due Within 30 Days</div>
+      </div>
+      <div class="info-box ae-dash-card" data-bucket="in_progress" onclick="aeApplyStatusFilter('in_progress')" role="button" tabindex="0" aria-pressed="false" style="border-radius:4px;padding:12px 16px;text-align:center;cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, outline-color .15s ease;outline:2px solid transparent;outline-offset:2px;">
+        <div id="aeDashInProgress" class="info-box-text" style="font-size:1.6rem;font-weight:900;line-height:1.1;">0</div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--text-muted);margin-top:3px;text-transform:uppercase;letter-spacing:.05em;">In Progress</div>
+      </div>
+      <div class="success-box ae-dash-card" data-bucket="done" onclick="aeApplyStatusFilter('done')" role="button" tabindex="0" aria-pressed="false" style="border-radius:4px;padding:12px 16px;text-align:center;cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, outline-color .15s ease;outline:2px solid transparent;outline-offset:2px;">
+        <div id="aeDashDone" class="success-box-text" style="font-size:1.6rem;font-weight:900;line-height:1.1;">0</div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--text-muted);margin-top:3px;text-transform:uppercase;letter-spacing:.05em;">Done</div>
+      </div>
+      <div class="gray-box ae-dash-card" data-bucket="" onclick="aeApplyStatusFilter('')" role="button" tabindex="0" aria-pressed="false" style="border-radius:4px;padding:12px 16px;text-align:center;cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, outline-color .15s ease;outline:2px solid transparent;outline-offset:2px;">
+        <div id="aeDashTotal" class="gray-box-text" style="font-size:1.6rem;font-weight:900;line-height:1.1;">0</div>
+        <div style="font-size:.68rem;font-weight:700;color:var(--text-muted);margin-top:3px;text-transform:uppercase;letter-spacing:.05em;">Total</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 교사 목록 -->
+  <div id="aeTeacherList">
+    <div class="flex items-center gap-3 py-8 justify-center" style="color:var(--outline)">
+      <div class="w-5 h-5 rounded-full animate-spin" style="border:2px solid var(--outline-variant);border-top-color:var(--primary);"></div>
+      <span class="text-sm">Loading...</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── 에디터 모달 ──────────────────────────────────────────────────────────── -->
+<div id="aeEditorOverlay" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px;">
+  <div id="aeEditorPanel"
+    style="width:100%;max-width:700px;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;background:var(--surface-lowest);border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,.2);display:flex;flex-direction:column;animation:modalIn .18s ease;border:1.5px solid var(--outline-variant);">
+
+    <!-- 헤더 -->
+    <div style="position:sticky;top:0;z-index:10;background:var(--surface-lowest);border-bottom:1.5px solid var(--outline-variant);padding:16px 20px 12px;display:flex;justify-content:space-between;align-items:flex-start;">
+      <div>
+        <p id="aePanelName" class="text-lg font-extrabold" style="color:var(--text-strong)"></p>
+        <p id="aePanelMeta" class="text-xs mt-0.5" style="color:var(--text-muted)"></p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="aeSaveIndicator" class="text-xs font-semibold hidden" style="color:var(--text-muted)"><i class="bi bi-cloud-check"></i> Saved</span>
+        <a id="aeFolderLink" href="#" target="_blank" class="btn-secondary px-3 py-2 text-xs" style="display:none;text-decoration:none;">
+          <i class="bi bi-folder2-open"></i> Folder
+        </a>
+        <button id="aeUnlockBtn" onclick="aeUnlockRecord()" class="btn-secondary unlock-btn px-3 py-2 text-xs" style="display:none;" data-tip="Revert to In Progress &amp; unlock fields&#10;In Progress 로 되돌려 필드 편집 가능하게">
+          <i class="bi bi-unlock-fill"></i> Unlock
+        </button>
+        <button id="aeGenerateBtn" onclick="aeGenerateReport()" class="btn-primary px-3 py-2 text-xs" data-tip="Save current data &amp; generate PDF to Drive&#10;현재 데이터 저장 후 PDF 생성 · Drive에 업로드">
+          <i class="bi bi-file-earmark-pdf-fill"></i> Generate Report
+        </button>
+        <button onclick="closeAeEditor()" class="btn-secondary px-2 py-2 text-sm"><i class="bi bi-x-lg"></i></button>
+      </div>
+    </div>
+
+    <!-- Grace period 경고 배너 — 이전 사이클 유예 기간 편집 중일 때만 표시 -->
+    <div id="aeGraceWarning" class="grace-warn-box" style="display:none;margin:12px 20px 0;padding:10px 14px;
+         border-radius:4px;font-size:.8rem;font-weight:600;line-height:1.5;">
+      <i class="bi bi-exclamation-triangle-fill grace-warn-icon" style="margin-right:6px;"></i>
+      <span id="aeGraceWarningText"></span>
+      <button type="button" class="ae-help-btn" onclick="aeShowGraceHelp()"
+              aria-label="About Grace period"
+              data-tip="What is Grace period?&#10;유예 기간이란?">
+        <i class="bi bi-info-circle-fill"></i>
+      </button>
+    </div>
+
+    <!-- 바디 -->
+    <div style="padding:20px;flex:1;display:flex;flex-direction:column;gap:0;">
+
+      <!-- 에디터 탭 바 (Evaluation / History) -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1.5px solid var(--outline-variant);padding-bottom:8px;">
+        <button id="ae-ed-tab-eval"    class="tab-btn active" onclick="switchAeEditorTab('eval')">Evaluation</button>
+        <button id="ae-ed-tab-history" class="tab-btn"        onclick="switchAeEditorTab('history')">History</button>
+      </div>
+
+      <!-- ▼▼ Evaluation 탭 ─ 기존 5 개 섹션 ▼▼ -->
+      <div id="aeEditorBodyEval">
+
+      <!-- ① Teacher Profile -->
+      <div class="ae-section" style="border:2px solid var(--outline);border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div class="ae-section-header" onclick="toggleAeSection(this)" style="display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--surface-low);border-bottom:1.5px solid var(--outline-variant);cursor:pointer;">
+          <span class="text-sm font-bold" style="color:var(--text-strong)"><i class="bi bi-person-fill mr-1.5" style="color:var(--primary)"></i>Teacher Profile</span>
+          <i class="bi bi-chevron-up ae-chevron" style="font-size:.75rem;color:var(--text-muted);transition:transform .2s"></i>
+        </div>
+        <div class="ae-section-body" style="padding:14px 16px;background:var(--surface-lowest);">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:.8125rem;">
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Name</span><p id="aeProfileName" class="font-semibold mt-0.5" style="color:var(--text-strong)">—</p></div>
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Emp ID</span><p id="aeProfileEmpId" class="font-semibold mt-0.5 font-mono" style="color:var(--text-strong)">—</p></div>
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Campus</span><p id="aeProfileCampus" class="font-semibold mt-0.5" style="color:var(--text-strong)">—</p></div>
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Position</span><p id="aeProfilePosition" class="font-semibold mt-0.5" style="color:var(--text-strong)">—</p></div>
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Start Date</span><p id="aeProfileStartDate" class="font-semibold mt-0.5" style="color:var(--text-strong)">—</p></div>
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Nationality</span><p id="aeProfileNationality" class="font-semibold mt-0.5" style="color:var(--text-strong)">—</p></div>
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Eval Deadline</span><p id="aeProfileDeadline" class="font-semibold mt-0.5" style="color:var(--primary)">—</p></div>
+            <div><span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Eval #</span><p id="aeProfileSequence" class="font-semibold mt-0.5 eval-num-color">—</p></div>
+          </div>
+          <div style="margin-top:18px;margin-bottom:6px;padding-top:12px;border-top:1px solid var(--outline-variant);display:flex;align-items:center;gap:12px;">
+            <span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Status</span>
+            <select id="aeStatusSelect" onchange="aeFieldChanged('status', this.value)" class="text-sm font-bold px-3 py-2" style="min-width:150px;">
+              <option value="not_started">Not Started</option>
+              <option value="in_progress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- ② Regular Evaluation -->
+      <div class="ae-section" style="border:2px solid var(--outline);border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div class="ae-section-header" onclick="toggleAeSection(this)" style="display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--surface-low);border-bottom:1.5px solid var(--outline-variant);cursor:pointer;">
+          <span class="text-sm font-bold" style="color:var(--text-strong)"><i class="bi bi-clipboard2-check-fill mr-1.5" style="color:var(--primary)"></i>Regular Evaluation</span>
+          <i class="bi bi-chevron-up ae-chevron" style="font-size:.75rem;color:var(--text-muted);transition:transform .2s"></i>
+        </div>
+        <div class="ae-section-body" style="padding:14px 16px;background:var(--surface-lowest);">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">1st Session</label>
+              <select id="aeSession1Select" onchange="aeOnSessionChange(1)" class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;">
+                <option value="">— Select —</option>
+                <option value="__manual__">Direct Input</option>
+              </select>
+              <div id="aeScore1Row" style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                <span class="text-xs font-bold" style="color:var(--text-muted)">Score:</span>
+                <span id="aeScore1Display" class="text-sm font-bold" style="color:var(--text-strong)">—</span>
+                <input id="aeScore1Manual" type="number" min="0" max="100" step="0.1"
+                  onblur="aeFieldChanged('reg_score_1', this.value)"
+                  class="hidden text-sm border px-2 py-1 font-bold" style="border-color:var(--outline-variant);border-radius:3px;width:70px;" placeholder="0–100">
+              </div>
+            </div>
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">2nd Session</label>
+              <select id="aeSession2Select" onchange="aeOnSessionChange(2)" class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;">
+                <option value="">— Select —</option>
+                <option value="__manual__">Direct Input</option>
+              </select>
+              <div id="aeScore2Row" style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                <span class="text-xs font-bold" style="color:var(--text-muted)">Score:</span>
+                <span id="aeScore2Display" class="text-sm font-bold" style="color:var(--text-strong)">—</span>
+                <input id="aeScore2Manual" type="number" min="0" max="100" step="0.1"
+                  onblur="aeFieldChanged('reg_score_2', this.value)"
+                  class="hidden text-sm border px-2 py-1 font-bold" style="border-color:var(--outline-variant);border-radius:3px;width:70px;" placeholder="0–100">
+              </div>
+            </div>
+          </div>
+          <div style="background:var(--surface-low);border:1.5px solid var(--outline-variant);border-radius:3px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
+            <span class="text-xs font-bold uppercase tracking-wider" style="color:var(--text-muted)">Final Regular Score (avg)</span>
+            <span id="aeRegFinalDisplay" class="text-lg font-extrabold" style="color:var(--text-strong)">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ Class Observation -->
+      <div class="ae-section" style="border:2px solid var(--outline);border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div class="ae-section-header" onclick="toggleAeSection(this)" style="display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--surface-low);border-bottom:1.5px solid var(--outline-variant);cursor:pointer;">
+          <span class="text-sm font-bold" style="color:var(--text-strong)"><i class="bi bi-eye-fill mr-1.5" style="color:var(--primary)"></i>Class Observation</span>
+          <i class="bi bi-chevron-up ae-chevron" style="font-size:.75rem;color:var(--text-muted);transition:transform .2s"></i>
+        </div>
+        <div class="ae-section-body" style="padding:14px 16px;background:var(--surface-lowest);">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Score (0–100)</label>
+              <input id="aeObsScore" type="number" min="0" max="100" step="0.1"
+                onblur="aeFieldChanged('obs_score', this.value)"
+                class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;" placeholder="e.g. 85">
+            </div>
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Date</label>
+              <input id="aeObsDate" type="text" class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;">
+            </div>
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Rater</label>
+              <select id="aeObsRater" onchange="aeFieldChanged('obs_rater', this.value)"
+                class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;">
+                <option value="">— Select —</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Drive Link</label>
+              <input id="aeObsLink" type="text"
+                onblur="aeFieldChanged('obs_link', this.value)"
+                class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;" placeholder="https://...">
+            </div>
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Comments (English)</label>
+            <textarea id="aeObsEng" rows="3"
+              onblur="aeFieldChanged('obs_eng', this.value)"
+              class="w-full text-sm border px-2 py-2" style="border-color:var(--outline-variant);border-radius:3px;resize:vertical;" placeholder="Overall comments..."></textarea>
+          </div>
+          <div style="margin-top:6px;">
+            <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">한국어 번역 <span style="font-weight:400;color:var(--text-dim);text-transform:none;letter-spacing:0;">Auto-translated</span></label>
+            <div id="aeObsKo" style="min-height:40px;padding:8px 10px;border:1.5px solid var(--outline-variant);border-radius:3px;background:var(--surface-low);font-size:.8rem;line-height:1.6;color:var(--on-surface-variant);white-space:pre-wrap;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ④ NET Evaluation -->
+      <div class="ae-section" style="border:2px solid var(--outline);border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div class="ae-section-header" onclick="toggleAeSection(this)" style="display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--surface-low);border-bottom:1.5px solid var(--outline-variant);cursor:pointer;">
+          <span class="text-sm font-bold" style="color:var(--text-strong)"><i class="bi bi-star-fill mr-1.5" style="color:var(--primary)"></i>NET Evaluation</span>
+          <i class="bi bi-chevron-up ae-chevron" style="font-size:.75rem;color:var(--text-muted);transition:transform .2s"></i>
+        </div>
+        <div class="ae-section-body" style="padding:14px 16px;background:var(--surface-lowest);">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Score (0–100)</label>
+              <input id="aeNetScore" type="number" min="0" max="100" step="0.1"
+                onblur="aeFieldChanged('net_score', this.value)"
+                class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;" placeholder="e.g. 79">
+            </div>
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Date</label>
+              <input id="aeNetDate" type="text" class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;">
+            </div>
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Rater</label>
+              <select id="aeNetRater" onchange="aeFieldChanged('net_rater', this.value)"
+                class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;">
+                <option value="">— Select —</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Drive Link</label>
+              <input id="aeNetLink" type="text"
+                onblur="aeFieldChanged('net_link', this.value)"
+                class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;" placeholder="https://...">
+            </div>
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Comments (English)</label>
+            <textarea id="aeNetEng" rows="3"
+              onblur="aeFieldChanged('net_eng', this.value)"
+              class="w-full text-sm border px-2 py-2" style="border-color:var(--outline-variant);border-radius:3px;resize:vertical;" placeholder="Overall comments..."></textarea>
+          </div>
+          <div style="margin-top:6px;">
+            <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">한국어 번역 <span style="font-weight:400;color:var(--text-dim);text-transform:none;letter-spacing:0;">Auto-translated</span></label>
+            <div id="aeNetKo" style="min-height:40px;padding:8px 10px;border:1.5px solid var(--outline-variant);border-radius:3px;background:var(--surface-low);font-size:.8rem;line-height:1.6;color:var(--on-surface-variant);white-space:pre-wrap;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Composite Score -->
+      <div class="success-box" style="border-radius:4px;padding:14px 18px;margin-bottom:10px;">
+        <p class="text-xs font-bold uppercase tracking-wider mb-3 success-box-text">Composite Score</p>
+        <div style="display:flex;flex-direction:column;gap:5px;font-size:.8125rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:var(--text);">Regular Eval</span>
+            <span><span id="aeCompRegScore">—</span> × <span id="aeCompWReg">—</span>% = <span id="aeCompRegContrib" class="font-bold" style="color:var(--text-strong)">—</span></span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:var(--text);">Class Obs</span>
+            <span><span id="aeCompObsScore">—</span> × <span id="aeCompWObs">—</span>% = <span id="aeCompObsContrib" class="font-bold" style="color:var(--text-strong)">—</span></span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:var(--text);">NET Eval</span>
+            <span><span id="aeCompNetScore">—</span> × <span id="aeCompWNet">—</span>% = <span id="aeCompNetContrib" class="font-bold" style="color:var(--text-strong)">—</span></span>
+          </div>
+          <div class="success-box-divider" style="margin-top:6px;padding-top:8px;display:flex;align-items:center;justify-content:space-between;">
+            <span class="font-bold success-box-text">Final Composite</span>
+            <span id="aeCompFinal" class="text-xl font-extrabold success-box-text">—</span>
+          </div>
+        </div>
+        <!-- Grade Badge -->
+        <div id="aeGradeBadgeRow" class="success-box-divider" style="display:none;margin-top:12px;padding-top:12px;text-align:center;">
+          <div id="aeGradeBadge" class="ae-grade-badge ae-grade-F">—</div>
+        </div>
+      </div>
+
+      <!-- ⑤ Salary & Overall -->
+      <div class="ae-section" style="border:2px solid var(--outline);border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div class="ae-section-header" onclick="toggleAeSection(this)" style="display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:var(--surface-low);border-bottom:1.5px solid var(--outline-variant);cursor:pointer;">
+          <span class="text-sm font-bold" style="color:var(--text-strong)"><i class="bi bi-cash-stack mr-1.5" style="color:var(--primary)"></i>Salary &amp; Overall</span>
+          <i class="bi bi-chevron-up ae-chevron" style="font-size:.75rem;color:var(--text-muted);transition:transform .2s"></i>
+        </div>
+        <div class="ae-section-body" style="padding:14px 16px;background:var(--surface-lowest);">
+          <div style="border:1.5px solid var(--outline-variant);border-radius:3px;overflow:hidden;margin-bottom:14px;">
+            <table style="width:100%;font-size:.8rem;border-collapse:collapse;">
+              <thead>
+                <tr style="background:var(--surface-low);">
+                  <th style="padding:7px 10px;text-align:left;font-weight:700;color:var(--on-surface-variant);border-bottom:1.5px solid var(--outline-variant);">Item</th>
+                  <th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--on-surface-variant);border-bottom:1.5px solid var(--outline-variant);">Current</th>
+                  <th style="padding:7px 4px;text-align:center;font-weight:700;color:var(--outline-variant);border-bottom:1.5px solid var(--outline-variant);width:20px;"></th>
+                  <th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--on-surface-variant);border-bottom:1.5px solid var(--outline-variant);">Increase</th>
+                  <th style="padding:7px 4px;text-align:center;font-weight:700;color:var(--outline-variant);border-bottom:1.5px solid var(--outline-variant);width:20px;"></th>
+                  <th style="padding:7px 10px;text-align:right;font-weight:700;color:var(--on-surface-variant);border-bottom:1.5px solid var(--outline-variant);">Applied</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td style="padding:6px 10px;color:var(--text-strong);border-bottom:1.5px solid var(--border-soft);">Base</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aeBaseCurrent" type="number" readonly class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;background:var(--surface-low);cursor:not-allowed;"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">+</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aeBaseInc" type="number" onblur="aeFieldChanged('base_inc',this.value);aeSalaryCalc()" class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;" placeholder="0"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">=</td>
+                  <td style="padding:6px 10px;text-align:right;font-weight:700;color:var(--text-strong);" id="aeBaseApplied">—</td>
+                </tr>
+                <tr><td style="padding:6px 10px;color:var(--text-strong);border-bottom:1.5px solid var(--border-soft);">Position Allowance</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aePoseCurrent" type="number" readonly class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;background:var(--surface-low);cursor:not-allowed;"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">+</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aePosInc" type="number" onblur="aeFieldChanged('pos_inc',this.value);aeSalaryCalc()" class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;" placeholder="0"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">=</td>
+                  <td style="padding:6px 10px;text-align:right;font-weight:700;color:var(--text-strong);" id="aePosApplied">—</td>
+                </tr>
+                <tr><td style="padding:6px 10px;color:var(--text-strong);border-bottom:1.5px solid var(--border-soft);">Role Allowance</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aeRoleCurrent" type="number" readonly class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;background:var(--surface-low);cursor:not-allowed;"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">+</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aeRoleInc" type="number" onblur="aeFieldChanged('role_inc',this.value);aeSalaryCalc()" class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;" placeholder="0"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">=</td>
+                  <td style="padding:6px 10px;text-align:right;font-weight:700;color:var(--text-strong);" id="aeRoleApplied">—</td>
+                </tr>
+                <tr><td style="padding:6px 10px;color:var(--text-strong);border-bottom:1.5px solid var(--border-soft);">Housing Allowance</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aeHousingCurrent" type="number" readonly class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;background:var(--surface-low);cursor:not-allowed;"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">+</td>
+                  <td style="padding:6px 10px;text-align:right;"><input id="aeHousingInc" type="number" onblur="aeFieldChanged('housing_inc',this.value);aeSalaryCalc()" class="text-sm font-bold text-right border px-1.5 py-1" style="border-color:var(--outline-variant);border-radius:3px;width:70px;" placeholder="0"></td>
+                  <td style="padding:6px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">=</td>
+                  <td style="padding:6px 10px;text-align:right;font-weight:700;color:var(--text-strong);" id="aeHousingApplied">—</td>
+                </tr>
+                <tr style="background:var(--surface-low);font-weight:800;">
+                  <td style="padding:7px 10px;color:var(--text-strong);">Total</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--text-strong);" id="aeTotalCurrent">—</td>
+                  <td style="padding:7px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">+</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--text-strong);" id="aeTotalInc">—</td>
+                  <td style="padding:7px 4px;text-align:center;color:var(--text-dim);font-weight:800;font-size:.85rem;">=</td>
+                  <td style="padding:7px 10px;text-align:right;color:var(--text-strong);" id="aeTotalApplied">—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-[10px] mb-1" style="color:var(--text-muted)">
+            Unit: 만원 (10,000 KRW) · Current values are auto-filled from NT Info (read-only)
+            <span style="display:block;color:var(--text-dim);">단위: 만원 · Current는 NT Info 자동 입력값 (수정 불가)</span>
+          </p>
+          <div id="aePolicyMatchInfo" style="display:none;margin-bottom:8px;font-size:.75rem;padding:6px 10px;border-radius:3px;"></div>
+          <div style="margin-bottom:12px;">
+            <button onclick="showRaisePolicy()" class="btn-secondary px-3 py-1.5 text-xs" data-tip="Show full raise policy table for reference&#10;현재 기본급 + 종합점수 기준 매칭 정책 표시">
+              <i class="bi bi-bar-chart-fill"></i> Raise Policy Reference
+            </button>
+            <div id="aeRaisePolicyBox" class="info-box info-box-text" style="display:none;margin-top:8px;border-radius:3px;padding:10px 14px;font-size:.78rem;"></div>
+          </div>
+          <!-- 수당 (Current + Future) — 외곽 테두리로 디자인 그룹 -->
+          <div style="margin-bottom:10px;border:1.5px solid var(--outline-variant);border-radius:4px;padding:10px 12px;background:var(--surface-lowest, var(--surface));">
+            <div class="text-xs font-bold uppercase tracking-wider mb-2" style="color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+              <i class="bi bi-cash-coin" style="color:var(--primary);font-size:.85rem;"></i>
+              Allowances <span style="font-weight:400;opacity:.7;">/ 수당</span>
+            </div>
+            <!-- 현재 수당 (NT Info U열, read-only) -->
+            <div style="margin-bottom:8px;">
+              <label class="text-[10px] font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted);">
+                Current <span style="font-weight:400;opacity:.7;">/ 현재</span>
+              </label>
+              <div id="aeNtAllowanceName" class="text-sm" style="padding:7px 10px;background:var(--surface-low);border-radius:3px;color:var(--text-strong);min-height:32px;display:flex;align-items:center;">—</div>
+            </div>
+            <!-- 미래 수당 (editable, 변경 사항) -->
+            <div>
+              <label class="text-[10px] font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted);display:flex;justify-content:space-between;">
+                <span>Future <span style="font-weight:400;opacity:.7;">/ 변경 사항</span></span>
+                <span id="aeAllowanceCommentCount" style="font-weight:400;color:var(--text-dim);">0 / 120</span>
+              </label>
+              <input id="aeAllowanceComment" type="text" maxlength="120"
+                oninput="document.getElementById('aeAllowanceCommentCount').textContent=this.value.length+' / 120'"
+                onblur="aeFieldChanged('allowance_comment', this.value)"
+                class="w-full text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;" placeholder="e.g. TL Allowance 추가">
+            </div>
+          </div>
+          <div>
+            <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">Overall Comments (English)</label>
+            <textarea id="aeOtherEng" rows="4"
+              onblur="aeFieldChanged('other_eng', this.value)"
+              class="w-full text-sm border px-2 py-2" style="border-color:var(--outline-variant);border-radius:3px;resize:vertical;" placeholder="Overall evaluation comments..."></textarea>
+          </div>
+          <div style="margin-top:6px;">
+            <label class="text-xs font-bold uppercase tracking-wider block mb-1" style="color:var(--text-muted)">한국어 번역 <span style="font-weight:400;color:var(--text-dim);text-transform:none;letter-spacing:0;">Auto-translated</span></label>
+            <div id="aeOtherKo" style="min-height:40px;padding:8px 10px;border:1.5px solid var(--outline-variant);border-radius:3px;background:var(--surface-low);font-size:.8rem;line-height:1.6;color:var(--on-surface-variant);white-space:pre-wrap;"></div>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- /aeEditorBodyEval -->
+
+      <!-- ▼▼ History 탭 ─ 과거 평가 사이클 타임라인 ▼▼ -->
+      <div id="aeEditorBodyHistory" style="display:none;">
+        <div id="aeEditorHistoryResults"></div>
+      </div>
+
+    </div><!-- /panel body -->
+  </div><!-- /aeEditorPanel -->
+</div><!-- /aeEditorOverlay -->
+
+<!-- ── Config Modal ────────────────────────────────────────────────────────── -->
+<div id="aeConfigModal" style="display:none;" class="modal-backdrop">
+  <div class="modal-box" style="max-width:520px;">
+    <div class="modal-header">
+      <div>
+        <h3 class="text-base font-extrabold" style="color:var(--text-strong)"><i class="bi bi-gear-fill mr-1.5" style="color:var(--primary)"></i>Annual Eval Config</h3>
+        <p class="text-xs mt-0.5" style="color:var(--text-muted)">Score weights · Raters · Raise policy <span style="color:var(--text-dim);font-size:.6rem;margin-left:4px;">가중치 · 평가자 · 급여 인상 정책</span></p>
+      </div>
+      <button onclick="closeModal('aeConfigModal')" class="text-xl font-bold px-2 py-1 rounded" style="color:var(--text-muted);background:none;border:none;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div style="padding:16px 22px 0;">
+      <div class="flex gap-1.5 mb-5">
+        <button onclick="switchAeCfgTab('weights')" id="ae-cfg-tab-weights" class="tab-btn active">Score Weights</button>
+        <button onclick="switchAeCfgTab('raters')" id="ae-cfg-tab-raters" class="tab-btn">Raters</button>
+        <button onclick="switchAeCfgTab('raise')" id="ae-cfg-tab-raise" class="tab-btn">Raise Policy</button>
+        <button onclick="switchAeCfgTab('history')" id="ae-cfg-tab-history" class="tab-btn">History</button>
+      </div>
+      <!-- Weights -->
+      <div id="ae-cfg-panel-weights">
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <label class="text-sm font-semibold" style="color:var(--text);">Regular Eval</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input id="aeWtReg" type="number" min="0" max="100" oninput="aeWeightTotal()" class="text-sm font-bold text-right border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;width:70px;">
+              <span class="text-sm font-bold" style="color:var(--text-muted);">%</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <label class="text-sm font-semibold" style="color:var(--text);">Class Observation</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input id="aeWtObs" type="number" min="0" max="100" oninput="aeWeightTotal()" class="text-sm font-bold text-right border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;width:70px;">
+              <span class="text-sm font-bold" style="color:var(--text-muted);">%</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <label class="text-sm font-semibold" style="color:var(--text);">NET Evaluation</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input id="aeWtNet" type="number" min="0" max="100" oninput="aeWeightTotal()" class="text-sm font-bold text-right border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;width:70px;">
+              <span class="text-sm font-bold" style="color:var(--text-muted);">%</span>
+            </div>
+          </div>
+          <div style="border-top:1.5px solid var(--outline-variant);padding-top:10px;display:flex;justify-content:space-between;align-items:center;">
+            <span class="text-sm font-bold" style="color:var(--text);">Total</span>
+            <span id="aeWtTotal" class="text-lg font-extrabold" style="color:var(--text-strong);">0 %</span>
+          </div>
+        </div>
+        <button onclick="saveAeWeights()" id="aeWtSaveBtn" class="btn-primary w-full py-2.5 text-sm justify-center">
+          <i class="bi bi-floppy-fill"></i> Save Weights
+        </button>
+      </div>
+      <!-- Raters -->
+      <div id="ae-cfg-panel-raters" style="display:none;">
+        <div id="aeRatersList" class="space-y-2 mb-3"></div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+          <input id="aeRaterInput" type="text" placeholder="Add rater name..." class="flex-1 text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;">
+          <button onclick="aeAddRater()" class="btn-secondary px-3 py-1.5 text-sm"><i class="bi bi-plus-lg"></i> Add</button>
+        </div>
+        <button onclick="saveAeRaters()" class="btn-primary w-full py-2.5 text-sm justify-center">
+          <i class="bi bi-floppy-fill"></i> Save Raters
+        </button>
+      </div>
+      <!-- Raise Policy -->
+      <div id="ae-cfg-panel-raise" style="display:none;">
+        <div id="aeRaisePolicyList" class="space-y-2 mb-3"></div>
+        <button onclick="aeAddRaiseGroup()" class="btn-secondary w-full py-2 text-sm mb-3" style="border-style:dashed;">
+          <i class="bi bi-plus-lg"></i> 기본급 구간 추가
+        </button>
+        <button onclick="saveAeRaisePolicy()" class="btn-primary w-full py-2.5 text-sm justify-center">
+          <i class="bi bi-floppy-fill"></i> Save Policy
+        </button>
+      </div>
+      <!-- History (Timeline) -->
+      <div id="ae-cfg-panel-history" style="display:none;">
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <input id="aeHistorySearch" type="text" placeholder="Search by name or emp ID..."
+            class="flex-1 text-sm border px-2 py-1.5" style="border-color:var(--outline-variant);border-radius:3px;"
+            onkeydown="if(event.key==='Enter')searchAeHistory()">
+          <button onclick="searchAeHistory()" class="btn-secondary px-3 py-1.5 text-sm"><i class="bi bi-search"></i></button>
+        </div>
+        <div id="aeHistoryResults" class="space-y-2"></div>
+      </div>
+    </div>
+    <div style="padding:16px 22px;"></div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+<div id="aeTooltip" class="ae-tooltip"></div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ── 이 페이지에 필요한 최소 공통 유틸 ──────────────────────────────────────
+
+// Grace period 안내 모달 — 페이지 헤더 / 에디터 배너의 info 아이콘에서 호출.
+// 글로벌 showModal (modal_icons.js) 사용. EN 먼저, KO 뒤에 줄바꿈.
+function aeShowGraceHelp() {
+  if (typeof showModal !== 'function') return;
+  showModal(
+    'info',
+    'About Grace Period\n유예 기간 안내',
+    "A teacher's annual evaluation deadline is set to their hire-date anniversary. " +
+    "If the deadline passes before the evaluation is completed, a 14-day grace period " +
+    "begins, during which you can still finalize the report. " +
+    "Once the grace window closes, the evaluation rolls over to the next cycle. " +
+    "The orange GRACE badge marks teachers in this state, and the banner inside the " +
+    "editor shows days remaining.\n\n" +
+    "교사의 연간 평가 마감일은 입사일을 기준으로 자동 설정됩니다. 마감일 이전에 " +
+    "평가를 완료하지 못한 경우 14일의 유예 기간이 시작되어 그 안에 보고서를 " +
+    "마무리할 수 있습니다. 유예 기간이 끝나면 평가는 자동으로 다음 사이클로 " +
+    "이월됩니다. 주황색 GRACE 배지는 이 상태의 교사를 표시하며, 에디터 상단 " +
+    "배너에 남은 일수가 보입니다."
+  );
+}
+
+// 세션 목록 (Regular Eval 세션 드롭다운용)
+let allSessions = [];
+async function loadSessions() {
+  try {
+    const res = await fetch('/api/v2/get-sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data.status === 'SUCCESS') {
+      allSessions = data.sessions || [];
+      console.log('[AE] loadSessions OK:', allSessions.length, 'sessions');
+    } else {
+      console.warn('[AE] loadSessions API error:', data.message);
+    }
+  } catch (e) {
+    console.error('[AE] loadSessions failed:', e);
+  }
+}
+
+function showToast(msg, type = 'success') {
+  const container = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  const isErr = type === 'error';
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:99999;padding:12px 20px;border-radius:4px;font-size:.875rem;font-weight:600;color:#fff;background:${isErr ? 'var(--danger)' : 'var(--success)'};box-shadow:0 4px 16px rgba(0,0,0,.18);animation:modalIn .18s ease;pointer-events:none;`;
+  t.textContent = msg;
+  container.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+
+// Escape 키로 모달 닫기 (에디터 → 설정 순서)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const editor = document.getElementById('aeEditorOverlay');
+    if (editor && editor.style.display !== 'none') { _doCloseAeEditor(); return; }
+    closeModal('aeConfigModal');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 날짜 입력란 → DYBDatepicker 위젯으로 교체
+  DYBDatepicker.replace('aeObsDate', {
+    placeholder: 'Select date',
+    onChange: (val) => { if (typeof aeFieldChanged === 'function') aeFieldChanged('obs_date', val); }
+  });
+  DYBDatepicker.replace('aeNetDate', {
+    placeholder: 'Select date',
+    onChange: (val) => { if (typeof aeFieldChanged === 'function') aeFieldChanged('net_date', val); }
+  });
+
+  // Tooltip: position:fixed로 overflow 부모 무관하게 표시
+  const tip = document.getElementById('aeTooltip');
+  document.addEventListener('mouseover', e => {
+    const el = e.target.closest('[data-tip]');
+    if (!el) { tip.classList.remove('visible'); return; }
+    tip.textContent = el.getAttribute('data-tip');
+    const rect = el.getBoundingClientRect();
+    // 항상 오른쪽에 표시 — 모달 상단바 가림 방지
+    tip.style.top = (rect.top + rect.height / 2) + 'px';
+    tip.style.bottom = '';
+    tip.style.left = (rect.right + 9) + 'px';
+    tip.style.transform = 'translateY(-50%)';
+    // 화면 오른쪽 밖으로 나가면 왼쪽에 표시
+    if (rect.right + 290 > window.innerWidth) {
+      tip.style.left = (rect.left - 9) + 'px';
+      tip.style.transform = 'translateX(-100%) translateY(-50%)';
+    }
+    tip.classList.add('visible');
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest('[data-tip]')) tip.classList.remove('visible');
+  });
+
+  loadSessions();
+  loadAnnualEval();
+});
+</script>
+<script src="{{ url_for('static', filename='js/eval_v2/campus_constants.js') }}"></script>
+<script src="{{ url_for('static', filename='js/eval_v2/admin_annual_eval.js') }}"></script>
+{% endblock %}

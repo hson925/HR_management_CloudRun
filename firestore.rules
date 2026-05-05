@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 기본: 모든 클라이언트 read/write 차단.
+    // Admin SDK (서버) 는 rules 우회하므로 모든 백엔드 endpoint 정상 작동.
+    // 클라가 직접 Firestore 호출이 필요해지면 별도 path-specific allow 추가.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
